@@ -1,0 +1,15 @@
+apiVersion: security.v1
+kind: ContainerIntent
+metadata:
+  name: external-db-app
+spec:
+  egress:
+    - description: "Connect to external PostgreSQL"
+      domains: ["api.external-company.com", "database.host.com"]
+      ports:
+        - number: 5432
+          protocol: TCP
+        - number: 80
+          protocol: TCP
+        - number: 443
+          protocol: TCP
