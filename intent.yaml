@@ -1,15 +1,11 @@
-apiVersion: intent.security/v1alpha1
+apiVersion: v1
 kind: ContainerIntent
 metadata:
   name: nginx-app
-  namespace: default
 spec:
   egress:
     - domains:
-        - api.stripe.com
-        - www.google.com
+        - google.com
       ports:
         - number: 443
-          protocol: TCP
-        - number: 80
           protocol: TCP

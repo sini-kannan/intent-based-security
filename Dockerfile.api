@@ -1,0 +1,21 @@
+FROM debian:bookworm
+
+# Install nginx and basic tools
+RUN apt update -qq && \
+    DEBIAN_FRONTEND=noninteractive apt install -y nginx curl iproute2 iputils-ping net-tools procps && \
+    rm -rf /var/lib/apt/lists/*
+
+# Configure nginx to listen on port 8080
+RUN rm -f /etc/nginx/sites-enabled/default && \
+    echo 'server { \
+        listen 8080; \
+        server_name _; \
+        location / { \
+            return 200 "API Server running on port 8080\n"; \
+        } \
+    }' > /etc/nginx/conf.d/api.conf
+
+EXPOSE 8080
+
+# Run nginx in foreground
+CMD ["nginx", "-g", "daemon off;"]
