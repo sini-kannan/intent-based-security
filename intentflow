@@ -1,0 +1,138 @@
+#!/usr/bin/env python3
+import argparse, subprocess, sys, os, re, shlex, time
+
+def run(cmd, capture=False, check=True, sudo=False):
+    if sudo and not os.geteuid() == 0:
+        cmd = "sudo " + cmd
+    if capture:
+        p = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        if check and p.returncode != 0:
+            print(p.stdout)
+            raise SystemExit(p.returncode)
+        return p.stdout
+    else:
+        p = subprocess.run(cmd, shell=True)
+        if check and p.returncode != 0:
+            raise SystemExit(p.returncode)
+        return None
+
+def build_image():
+    print(">> build image: intent-api")
+    run("docker build -t intent-api -f Dockerfile.api .")
+
+def cleanup():
+    print(">> cleanup old containers and network")
+    run("docker rm -f api-service frontend-app db-service 2>/dev/null || true")
+    run("docker network rm micro-net 2>/dev/null || true")
+
+def create_and_start():
+    print(">> create network and start containers")
+    run("docker network create micro-net || true")
+    run("docker run -d --name api-service --label intent=api-service --network micro-net intent-api")
+    run("docker run -d --name frontend-app --label intent=frontend-app --network micro-net nginx")
+    run("docker run -d --name db-service --label intent=db-service --network micro-net alpine sleep 3600")
+    time.sleep(2)
+    run("docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}'")
+
+def validate():
+    print(">> validate intents")
+    run("python3 intent_validator.py intent_api.yaml || true")
+    run("python3 intent_validator.py intent_frontend.yaml || true")
+    run("python3 intent_validator.py intent_db.yaml || true")
+
+def compile_policies():
+    print(">> compile policies")
+    run("python3 batch_policy_compiler.py")
+    run("ls -l policies || true")
+
+def capture(duration, simulate):
+    cmd = f"python3 traffic_collector.py --network micro-net --duration {duration}"
+    if simulate:
+        cmd += " --simulate"
+    print(">> capture traffic (this may need sudo)")
+    out = run(cmd, capture=True, check=False, sudo=True)
+    m = re.search(r"Logs stored in:\s*(/tmp/runtime_logs[^\s]+)", out)
+    if not m:
+        m = re.search(r"Logs directory:\s*(/tmp/runtime_logs[^\s]+)", out)
+    if not m:
+        print(out)
+        raise SystemExit("Could not find logs directory in collector output.")
+    logs = m.group(1)
+    print(">> logs:", logs)
+    return logs
+
+def drift(logs):
+    print(">> detect drift")
+    run(f"python3 detect_drift_batch_pretty.py --logs {shlex.quote(logs)}")
+
+def enforce():
+    print(">> enforce policies (needs sudo)")
+    run("sudo python3 policy_enforcer.py", check=False)
+    run("sudo iptables -S | grep 172.18 || true", check=False)
+
+def test_flow():
+    print(">> test flows")
+    run("sudo docker exec -it frontend-app sh -c \"curl -I --max-time 5 http://api-service:80\" || true", check=False)
+    run("sudo docker exec -it frontend-app sh -c \"curl -I --max-time 5 http://api-service:8080\" || true", check=False)
+    run("sudo docker exec -it frontend-app sh -c \"curl -I --max-time 5 http://db-service:3306 || echo blocked\" || true", check=False)
+
+def full(args):
+    build_image()
+    cleanup()
+    create_and_start()
+    validate()
+    compile_policies()
+    logs = capture(args.duration, not args.no_simulate)
+    drift(logs)
+    enforce()
+    test_flow()
+    print(">> pipeline complete")
+
+def main():
+    p = argparse.ArgumentParser(prog="intentflow")
+    sub = p.add_subparsers(dest="cmd")
+    sub.add_parser("build")
+    sub.add_parser("cleanup")
+    sub.add_parser("start")
+    sub.add_parser("validate")
+    sub.add_parser("compile")
+    sc = sub.add_parser("capture")
+    sc.add_argument("--duration", type=int, default=30)
+    sc.add_argument("--no-simulate", action="store_true")
+    sd = sub.add_parser("drift")
+    sd.add_argument("--logs", required=False)
+    sub.add_parser("enforce")
+    sub.add_parser("test")
+    sf = sub.add_parser("full")
+    sf.add_argument("--duration", type=int, default=60)
+    sf.add_argument("--no-simulate", action="store_true")
+    args = p.parse_args()
+
+    if args.cmd == "build":
+        build_image()
+    elif args.cmd == "cleanup":
+        cleanup()
+    elif args.cmd == "start":
+        create_and_start()
+    elif args.cmd == "validate":
+        validate()
+    elif args.cmd == "compile":
+        compile_policies()
+    elif args.cmd == "capture":
+        capture(args.duration, not args.no_simulate)
+    elif args.cmd == "drift":
+        if getattr(args, "logs", None):
+            drift(args.logs)
+        else:
+            print("please pass --logs <path>")
+    elif args.cmd == "enforce":
+        enforce()
+    elif args.cmd == "test":
+        test_flow()
+    elif args.cmd == "full":
+        full(args)
+    else:
+        p.print_help()
+
+if __name__ == "__main__":
+    main()

@@ -1,67 +1,85 @@
 #!/usr/bin/env python3
-"""
-policy_enforcer.py
-Applies intent-based egress policies using iptables for running Docker containers.
-"""
+import os, yaml, subprocess
+from datetime import datetime
 
-import os
-import yaml
-import subprocess
-from glob import glob
+def run(cmd):
+    return subprocess.run(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-def run_cmd(cmd):
-    result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    if result.returncode != 0:
-        print(f"⚠️  Error running: {cmd}\n{result.stderr.decode()}")
-    return result.stdout.decode().strip()
+def get_ip(name):
+    try:
+        out = subprocess.check_output(
+            ["docker","inspect","-f","{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}",name],
+            text=True
+        ).strip()
+        return out
+    except:
+        return ""
 
-def get_container_ip(name):
-    cmd = f"docker inspect -f '{{{{range .NetworkSettings.Networks}}}}{{{{.IPAddress}}}}{{{{end}}}}' {name}"
-    return run_cmd(cmd)
+def ensure_running(name):
+    try:
+        out = subprocess.check_output(["docker","inspect","-f","{{.State.Running}}",name],text=True).strip()
+        if out != "true":
+            subprocess.run(["docker","start",name],stdout=subprocess.DEVNULL)
+    except:
+        pass
 
-def apply_policy(container_name, policy_path):
-    print(f"\n🔐 Applying policy from {policy_path} to container {container_name}")
+def read_watch():
+    if not os.path.exists("port_watch.yaml"):
+        return {"bad_ports":[], "safe_ports":[]}
+    with open("port_watch.yaml") as f:
+        return yaml.safe_load(f) or {"bad_ports":[], "safe_ports":[]}
 
-    with open(policy_path, "r") as f:
-        data = yaml.safe_load(f)
+def read_ports(policy):
+    with open(policy) as f:
+        doc = yaml.safe_load(f)
+    items=[]
+    for rule in doc.get("spec",{}).get("egress",[]) or []:
+        for p in rule.get("ports",[]) or []:
+            port=p.get("port") or p.get("number")
+            proto=(p.get("protocol") or "TCP").upper()
+            if port:
+                items.append((str(port),proto))
+    return items
 
-    egress_rules = data.get("spec", {}).get("egress", [])
-    allowed_ports = []
-    for rule in egress_rules:
-        for port in rule.get("ports", []):
-            allowed_ports.append(str(port.get("port")))
-    
-    ip = get_container_ip(container_name)
+def enforce(name, policy, bad_ports):
+    ensure_running(name)
+    ip=get_ip(name)
     if not ip:
-        print(f"⚠️  Could not get IP for {container_name}")
+        print(name,"no ip")
         return
 
-    print(f"→ Container IP: {ip}")
-    print(f"→ Allowed egress ports: {', '.join(allowed_ports) or 'None'}")
+    allowed=read_ports(policy)
 
-    # Flush previous rules for this container
-    run_cmd(f"sudo iptables -D FORWARD -s {ip} -j DROP || true")
-    run_cmd(f"sudo iptables -F")
+    # allow declared ports
+    for port, proto in allowed:
+        proto_flag="tcp" if proto=="TCP" else "udp"
+        run(f"sudo iptables -A DOCKER-USER -s {ip} -p {proto_flag} --dport {port} -m conntrack --ctstate NEW -j ACCEPT")
 
-    # Allow specified egress ports
-    for port in allowed_ports:
-        run_cmd(f"sudo iptables -A FORWARD -s {ip} -p tcp --dport {port} -j ACCEPT")
+    # block bad ports
+    for bp in bad_ports:
+        run(f"sudo iptables -A DOCKER-USER -s {ip} -p tcp --dport {bp} -m conntrack --ctstate NEW -j DROP")
+        run(f"sudo iptables -A DOCKER-USER -s {ip} -p udp --dport {bp} -m conntrack --ctstate NEW -j DROP")
 
-    # Drop everything else
-    run_cmd(f"sudo iptables -A FORWARD -s {ip} -j DROP")
+    # drop any other new traffic
+    run(f"sudo iptables -A DOCKER-USER -s {ip} -m conntrack --ctstate NEW -j DROP")
 
-    print("✅ Policy applied successfully.")
+    print(name,"rules applied")
 
 def main():
-    print("=== Intent-Based Policy Enforcement ===")
-    policies = glob("policies/*.yaml")
+    watch=read_watch()
+    bad_ports=set(watch.get("bad_ports",[]))
 
-    for policy in policies:
-        # Derive container name from file
-        container = os.path.basename(policy).replace("-networkpolicy.yaml", "")
-        apply_policy(container, policy)
+    if not os.path.isdir("policies"):
+        print("no policies folder")
+        return
 
-    print("\nAll policies enforced successfully.")
+    files=[f for f in os.listdir("policies") if f.endswith(".yaml")]
 
-if __name__ == "__main__":
-    main()
+    run("sudo iptables -F DOCKER-USER")
+    run("sudo iptables -A DOCKER-USER -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT")
+
+    for f in files:
+        name=f.replace("-networkpolicy.yaml","")
+        enforce(name, os.path.join("policies",f), bad_ports)
+
+    print("done at",datetime.now())
