@@ -62,13 +62,17 @@ def capture(duration, simulate):
     return logs
 
 def drift(logs):
-    print(">> detect drift")
-    run(f"python3 detect_drift_batch_pretty.py --logs {shlex.quote(logs)}")
+    print(">> auto drift learner") 
+    run("python3 detect_drift_auto.py --logs {} --intents .".format(logs))
+    print(">> update bad port list")
+    run("python3 update_port_watch.py")
+def drift_auto(logs):
+    print(">> auto drift learner")
+    run(f"python3 detect_drift_auto.py --logs {shlex.quote(logs)} --intents .", check=False)
 
 def enforce():
     print(">> enforce policies (needs sudo)")
     run("sudo python3 policy_enforcer.py", check=False)
-    run("sudo iptables -S | grep 172.18 || true", check=False)
 
 def test_flow():
     print(">> test flows")
@@ -84,6 +88,7 @@ def full(args):
     compile_policies()
     logs = capture(args.duration, not args.no_simulate)
     drift(logs)
+    drift_auto(logs)       # << added here
     enforce()
     test_flow()
     print(">> pipeline complete")
@@ -101,6 +106,7 @@ def main():
     sc.add_argument("--no-simulate", action="store_true")
     sd = sub.add_parser("drift")
     sd.add_argument("--logs", required=False)
+    sub.add_parser("drift-auto")
     sub.add_parser("enforce")
     sub.add_parser("test")
     sf = sub.add_parser("full")
@@ -121,10 +127,9 @@ def main():
     elif args.cmd == "capture":
         capture(args.duration, not args.no_simulate)
     elif args.cmd == "drift":
-        if getattr(args, "logs", None):
-            drift(args.logs)
-        else:
-            print("please pass --logs <path>")
+        drift(args.logs)
+    elif args.cmd == "drift-auto":
+        drift_auto(".")
     elif args.cmd == "enforce":
         enforce()
     elif args.cmd == "test":
