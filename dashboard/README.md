@@ -114,18 +114,3 @@ interface Container {
 4. Push to the branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Acknowledgments
-
-- Icons by [Material-UI](https://mui.com/material-ui/material-icons/)
-- UI Components by [Material-UI](https://mui.com/)
-- Charting by [Recharts](https://recharts.org/)
-
----
-
-<div align="center">
-  Made by Your Team Name
-</div>
