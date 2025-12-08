@@ -96,8 +96,11 @@ npm start
 ```
 
 ### Access Points
-- Dashboard: http://localhost:3000
-- API Documentation: http://localhost:8000/docs
+- **Live Demo**: https://intentbased-security.vercel.app (Frontend only - UI demonstration)
+- **Local Dashboard**: http://localhost:3000
+- **API Documentation**: http://localhost:8000/docs
+
+> **Note**: The Vercel deployment shows the dashboard UI only. For full functionality including backend API, drift detection, and policy enforcement, run the system locally following the installation instructions above.
 
 ## Usage
 
@@ -201,10 +204,3 @@ Payment: "Allow access to api.stripe.com"
 - Docker (Container runtime)
 - tcpdump (Network traffic capture)
 
-## Contributing
-
-This project was developed as part of cybersecurity coursework for academic purposes.
-
-## License
-
-Educational use only.
