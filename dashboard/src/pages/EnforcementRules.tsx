@@ -1,262 +1,241 @@
-import React from 'react';
-import { Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Chip, Button, Divider, Switch, FormControlLabel } from '@mui/material';
-import { styled } from '@mui/material/styles';
-import SecurityIcon from '@mui/icons-material/Security';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import WarningIcon from '@mui/icons-material/Warning';
-import BlockIcon from '@mui/icons-material/Block';
+import React, { useState, useEffect } from 'react';
+import { createIntent, listIntents, Intent } from '../services/api';
+import {
+  Box,
+  Button,
+  TextField,
+  Typography,
+  Paper,
+  CircularProgress,
+  Alert,
+  Snackbar,
+  TableContainer,
+  Table,
+  TableHead,
+  TableRow,
+  TableCell,
+  TableBody,
+  TablePagination,
+  Chip,
+  IconButton,
+  Tooltip,
+} from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
+import DeleteIcon from '@mui/icons-material/Delete';
 
-const Item = styled(Paper)(({ theme }) => ({
-  backgroundColor: theme.palette.mode === 'dark' ? '#1A2027' : '#fff',
-  ...theme.typography.body2,
-  padding: theme.spacing(3),
-  color: theme.palette.text.secondary,
-  borderRadius: '10px',
-  boxShadow: '0 4px 20px 0 rgba(0,0,0,0.05)',
-  marginBottom: theme.spacing(3),
-}));
+const EnforcementRules: React.FC = () => {
+  const [intentText, setIntentText] = useState('');
+  const [containerName, setContainerName] = useState('my-container');
+  const [intents, setIntents] = useState<Intent[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(5);
 
-const StyledTable = styled(Table)({
-  minWidth: 650,
-  '& .MuiTableCell-head': {
-    fontWeight: 600,
-    backgroundColor: '#f5f5f5',
-  },
-});
+  const loadIntents = async () => {
+    try {
+      setIsLoading(true);
+      const data = await listIntents();
+      setIntents(data);
+    } catch (err) {
+      setError('Failed to load intents');
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-const RuleStatus = ({ enforced }: { enforced: boolean }) => (
-  <Chip
-    icon={enforced ? <CheckCircleIcon fontSize="small" /> : <WarningIcon fontSize="small" />}
-    label={enforced ? 'Enforced' : 'Not Enforced'}
-    color={enforced ? 'success' : 'warning'}
-    variant="outlined"
-    size="small"
-  />
-);
+  useEffect(() => {
+    loadIntents();
+  }, []);
 
-const ActionChip = ({ action }: { action: 'ALLOW' | 'DENY' }) => (
-  <Chip
-    icon={action === 'ALLOW' ? <CheckCircleIcon fontSize="small" /> : <BlockIcon fontSize="small" />}
-    label={action}
-    color={action === 'ALLOW' ? 'success' : 'error'}
-    variant="outlined"
-    size="small"
-  />
-);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!intentText.trim()) return;
 
-const EnforcementRules = () => {
-  // Mock data - replace with actual data from your backend
-  const rules = [
-    {
-      id: 1,
-      container: 'frontend-app',
-      source: '0.0.0.0/0',
-      destination: '0.0.0.0/0',
-      protocol: 'tcp',
-      port: '80,443',
-      action: 'ALLOW',
-      enforced: true,
-      lastUpdated: '2025-12-05T14:30:00Z',
-    },
-    {
-      id: 2,
-      container: 'api-service',
-      source: 'frontend-app',
-      destination: 'api-service',
-      protocol: 'tcp',
-      port: '3000',
-      action: 'ALLOW',
-      enforced: true,
-      lastUpdated: '2025-12-05T14:25:00Z',
-    },
-    {
-      id: 3,
-      container: 'database',
-      source: 'api-service',
-      destination: 'database',
-      protocol: 'tcp',
-      port: '5432',
-      action: 'ALLOW',
-      enforced: true,
-      lastUpdated: '2025-12-05T14:20:00Z',
-    },
-    {
-      id: 4,
-      container: '*',
-      source: '*',
-      destination: '*',
-      protocol: '*',
-      port: '22',
-      action: 'DENY',
-      enforced: true,
-      lastUpdated: '2025-12-05T14:15:00Z',
-    },
-  ];
+    try {
+      setIsCreating(true);
+      setError(null);
+      await createIntent(intentText, containerName);
+      setSuccess('Intent created successfully!');
+      setIntentText('');
+      await loadIntents();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create intent');
+    } finally {
+      setIsCreating(false);
+    }
+  };
 
-  const [enforcementEnabled, setEnforcementEnabled] = React.useState(true);
+  const handleDelete = async (id: string) => {
+    if (window.confirm('Are you sure you want to delete this intent?')) {
+      try {
+        // In a real app, you would call deleteIntent(id) here
+        setIntents(intents.filter(intent => intent.id !== id));
+        setSuccess('Intent deleted successfully!');
+      } catch (err) {
+        setError('Failed to delete intent');
+        console.error(err);
+      }
+    }
+  };
 
-  const handleToggleEnforcement = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setEnforcementEnabled(event.target.checked);
-    // Here you would typically make an API call to update enforcement status
+  const handleChangePage = (event: unknown, newPage: number) => {
+    setPage(newPage);
+  };
+
+  const handleChangeRowsPerPage = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setRowsPerPage(parseInt(event.target.value, 10));
+    setPage(0);
   };
 
   return (
-    <Box>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Box>
-          <Typography variant="h5" fontWeight={600}>
-            Enforcement Rules
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            View and manage your security enforcement rules
-          </Typography>
-        </Box>
-        <FormControlLabel
-          control={
-            <Switch
-              checked={enforcementEnabled}
-              onChange={handleToggleEnforcement}
-              color="primary"
-            />
-          }
-          label={
-            <Box display="flex" alignItems="center">
-              <SecurityIcon
-                color={enforcementEnabled ? 'success' : 'disabled'}
-                fontSize="small"
-                sx={{ mr: 1 }}
-              />
-              <Typography variant="body2">
-                {enforcementEnabled ? 'Enforcement Active' : 'Enforcement Paused'}
-              </Typography>
-            </Box>
-          }
-        />
-      </Box>
+    <Box sx={{ p: 3 }}>
+      <Typography variant="h4" gutterBottom>
+        Intent-Based Security Rules
+      </Typography>
 
-      <Item>
-        <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-          <Typography variant="h6" fontWeight={600}>
-            Active Rules
-          </Typography>
-          <Box>
-            <Button
-              variant="outlined"
+      <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
+        <Typography variant="h6" gutterBottom>
+          Create New Intent
+        </Typography>
+        <form onSubmit={handleSubmit}>
+          <Box display="flex" gap={2} alignItems="flex-start">
+            <TextField
+              label="Container Name"
+              value={containerName}
+              onChange={(e) => setContainerName(e.target.value)}
               size="small"
-              sx={{ textTransform: 'none', borderRadius: '20px', mr: 1 }}
-            >
-              Export Rules
-            </Button>
+              sx={{ width: 200 }}
+              required
+            />
+            <TextField
+              label="Intent Description"
+              value={intentText}
+              onChange={(e) => setIntentText(e.target.value)}
+              fullWidth
+              multiline
+              rows={1}
+              placeholder="e.g., My container needs to access web services and connect to PostgreSQL"
+              required
+              size="small"
+            />
             <Button
+              type="submit"
               variant="contained"
-              size="small"
-              sx={{ textTransform: 'none', borderRadius: '20px' }}
+              color="primary"
+              disabled={isCreating}
+              startIcon={isCreating ? <CircularProgress size={20} /> : <AddIcon />}
+              sx={{ height: 40 }}
             >
-              Add Rule
+              {isCreating ? 'Creating...' : 'Create'}
             </Button>
           </Box>
-        </Box>
+        </form>
+      </Paper>
 
-        <TableContainer component={Paper} elevation={0} sx={{ borderRadius: '8px', border: '1px solid rgba(0,0,0,0.12)' }}>
-          <StyledTable>
+      <Typography variant="h6" gutterBottom>
+        Existing Intents
+      </Typography>
+      <Paper elevation={3} sx={{ width: '100%', overflow: 'hidden' }}>
+        <TableContainer sx={{ maxHeight: 440 }}>
+          <Table stickyHeader aria-label="intents table">
             <TableHead>
               <TableRow>
                 <TableCell>Container</TableCell>
-                <TableCell>Source</TableCell>
-                <TableCell>Destination</TableCell>
-                <TableCell>Protocol</TableCell>
-                <TableCell>Port(s)</TableCell>
-                <TableCell>Action</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell>Last Updated</TableCell>
+                <TableCell>Intent</TableCell>
+                <TableCell>Generated YAML</TableCell>
+                <TableCell>Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {rules.map((rule) => (
-                <TableRow key={rule.id} hover>
-                  <TableCell>
-                    <Typography variant="body2" fontWeight={500}>
-                      {rule.container}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>{rule.source}</TableCell>
-                  <TableCell>{rule.destination}</TableCell>
-                  <TableCell>{rule.protocol.toUpperCase()}</TableCell>
-                  <TableCell>{rule.port}</TableCell>
-                  <TableCell>
-                    <ActionChip action={rule.action as 'ALLOW' | 'DENY'} />
-                  </TableCell>
-                  <TableCell>
-                    <RuleStatus enforced={rule.enforced} />
-                  </TableCell>
-                  <TableCell>
-                    <Typography variant="body2" color="text.secondary">
-                      {new Date(rule.lastUpdated).toLocaleString()}
-                    </Typography>
+              {isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={4} align="center">
+                    <CircularProgress />
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : (
+                intents
+                  .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+                  .map((intent) => (
+                    <TableRow key={intent.id}>
+                      <TableCell>
+                        <Chip 
+                          label={intent.container_name} 
+                          color="primary" 
+                          variant="outlined" 
+                          size="small" 
+                        />
+                      </TableCell>
+                      <TableCell>{intent.text}</TableCell>
+                      <TableCell>
+                        <Box 
+                          component="pre" 
+                          sx={{ 
+                            margin: 0, 
+                            whiteSpace: 'pre-wrap',
+                            fontFamily: 'monospace',
+                            fontSize: '0.8rem',
+                            maxHeight: '100px',
+                            overflow: 'auto',
+                            p: 1,
+                            bgcolor: 'action.hover',
+                            borderRadius: 1
+                          }}
+                        >
+                          {intent.yaml_content}
+                        </Box>
+                      </TableCell>
+                      <TableCell>
+                        <Tooltip title="Delete intent">
+                          <IconButton 
+                            onClick={() => handleDelete(intent.id)}
+                            color="error"
+                            size="small"
+                          >
+                            <DeleteIcon />
+                          </IconButton>
+                        </Tooltip>
+                      </TableCell>
+                    </TableRow>
+                  ))
+              )}
             </TableBody>
-          </StyledTable>
+          </Table>
         </TableContainer>
-      </Item>
+        <TablePagination
+          rowsPerPageOptions={[5, 10, 25]}
+          component="div"
+          count={intents.length}
+          rowsPerPage={rowsPerPage}
+          page={page}
+          onPageChange={handleChangePage}
+          onRowsPerPageChange={handleChangeRowsPerPage}
+        />
+      </Paper>
 
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 3, mb: 3 }}>
-        <Box>
-          <Item>
-            <Typography variant="h6" fontWeight={600} mb={2}>
-              Default Policy
-            </Typography>
-            <Typography variant="body2" mb={3}>
-              The default policy is applied to all traffic that doesn't match any other rules.
-            </Typography>
-            <Box display="flex" alignItems="center" justifyContent="space-between">
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Default Action
-                </Typography>
-                <Typography variant="h6">Deny All</Typography>
-              </Box>
-              <Button variant="outlined" size="small" sx={{ textTransform: 'none', borderRadius: '20px' }}>
-                Change Policy
-              </Button>
-            </Box>
-          </Item>
-        </Box>
-        <Box>
-          <Item>
-            <Typography variant="h6" fontWeight={600} mb={2}>
-              Rule Statistics
-            </Typography>
-            <Box display="flex" justifyContent="space-around" textAlign="center">
-              <Box>
-                <Typography variant="h4" color="success.main">
-                  {rules.filter(r => r.action === 'ALLOW').length}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Allow Rules
-                </Typography>
-              </Box>
-              <Box>
-                <Typography variant="h4" color="error.main">
-                  {rules.filter(r => r.action === 'DENY').length}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Deny Rules
-                </Typography>
-              </Box>
-              <Box>
-                <Typography variant="h4" color="primary.main">
-                  {rules.length}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Total Rules
-                </Typography>
-              </Box>
-            </Box>
-          </Item>
-        </Box>
-      </Box>
+      <Snackbar
+        open={!!error}
+        autoHideDuration={6000}
+        onClose={() => setError(null)}
+      >
+        <Alert severity="error" onClose={() => setError(null)}>
+          {error}
+        </Alert>
+      </Snackbar>
+
+      <Snackbar
+        open={!!success}
+        autoHideDuration={6000}
+        onClose={() => setSuccess(null)}
+      >
+        <Alert severity="success" onClose={() => setSuccess(null)}>
+          {success}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

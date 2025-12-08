@@ -150,18 +150,36 @@ def main():
         print(f"{Color.RED}No intent or log files found.{Color.RESET}")
         return
 
-    print(f"{Color.BOLD}Discovered intents:{Color.RESET} {intent_files}")
-    print(f"{Color.BOLD}Discovered logs:{Color.RESET} {log_files}\n")
+    print(f"{Color.BOLD}Intents detected:{Color.RESET} {len(intent_files)}")
+    print(f"{Color.BOLD}Logs detected:{Color.RESET}    {len(log_files)}\n")
 
+    # 1. Analyze Known Containers
     for intent in intent_files:
         container_name = intent.replace("intent_", "").replace(".yaml", "")
         matched_logs = [l for l in log_files if container_name in l]
         if not matched_logs:
-            print(f"{Color.YELLOW}Skipping {intent} — no matching log found.{Color.RESET}")
             continue
 
         log_path = os.path.join(args.logs, matched_logs[0])
         analyze_container(intent, log_path)
+
+    # 2. Flag Unrecognized Containers
+    known_names = [i.replace("intent_", "").replace(".yaml", "") for i in intent_files]
+    for log in log_files:
+        is_known = any(name in log for name in known_names)
+        
+        if not is_known:
+             print(f"\n{Color.BOLD}{Color.RED}[!] UNMANAGED CONTAINER: {log}{Color.RESET}")
+             print(f"    Traffic detected without corresponding intent policy.")
+             print(f"  Action: Recommended to QUARANTINE.")
+             # Create a dummy "drift" entry for frontend
+             drift_entry = {
+                 "container": log, 
+                 "undeclared_ports": ["ALL (Unauthorized Container)"], 
+                 "undeclared_hosts": []
+             }
+             # Append to existing json if exists (not implemented effectively here as overwrite, but print is enough for console)
+
 
 
 # ───────────────────────────────────────────────

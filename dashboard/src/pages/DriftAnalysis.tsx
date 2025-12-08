@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Chip, Button, Divider } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import WarningIcon from '@mui/icons-material/Warning';
 import DownloadIcon from '@mui/icons-material/Download';
 import TimelineIcon from '@mui/icons-material/Timeline';
+import { getDriftLogs } from '../services/api';
 
 const Item = styled(Paper)(({ theme }) => ({
   backgroundColor: theme.palette.mode === 'dark' ? '#1A2027' : '#fff',
@@ -41,41 +42,44 @@ const DriftStatus = ({ status }: { status: 'high' | 'medium' | 'low' }) => {
 };
 
 const DriftAnalysis = () => {
-  // Mock data - replace with actual data from your backend
-  const driftData = [
-    {
-      id: 1,
-      container: 'frontend-app',
-      timestamp: '2025-12-05T14:30:00Z',
-      type: 'Undeclared Port',
-      details: 'Port 22 (SSH) detected but not declared',
-      status: 'high',
-    },
-    {
-      id: 2,
-      container: 'api-service',
-      timestamp: '2025-12-05T13:15:00Z',
-      type: 'Unexpected Domain',
-      details: 'Connection to external-api.unknown.com',
-      status: 'medium',
-    },
-    {
-      id: 3,
-      container: 'database',
-      timestamp: '2025-12-05T12:00:00Z',
-      type: 'Excessive Access',
-      details: 'Multiple connections from non-whitelisted IPs',
-      status: 'high',
-    },
-  ];
+  const [driftData, setDriftData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchDrift = async () => {
+      try {
+        const data = await getDriftLogs();
+        const formatted = Array.isArray(data) ? data.map((d: any, idx: number) => {
+          const ports = (d.bad_ports || []).filter((p: number) => p > 0);
+          return {
+            id: idx,
+            container: d.container || 'unknown',
+            timestamp: d.time || new Date().toISOString(),
+            type: 'Undeclared Port',
+            details: ports.length > 0 ? `Ports: ${ports.join(', ')}` : 'No drift detected',
+            status: ports.length > 3 ? 'high' : ports.length > 0 ? 'medium' : 'low',
+          };
+        }) : [];
+        setDriftData(formatted);
+      } catch (e) {
+        console.error('Failed to fetch drift:', e);
+        setDriftData([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchDrift();
+    const interval = setInterval(fetchDrift, 10000);
+    return () => clearInterval(interval);
+  }, []);
 
   const driftStats = {
-    totalDrifts: 12,
-    highSeverity: 5,
-    mediumSeverity: 4,
-    lowSeverity: 3,
-    containersAffected: 4,
-    lastUpdated: '2025-12-05T15:45:00Z',
+    totalDrifts: driftData.length,
+    highSeverity: driftData.filter(d => d.status === 'high').length,
+    mediumSeverity: driftData.filter(d => d.status === 'medium').length,
+    lowSeverity: driftData.filter(d => d.status === 'low').length,
+    containersAffected: new Set(driftData.map(d => d.container)).size,
+    lastUpdated: new Date().toISOString(),
   };
 
   return (
@@ -196,21 +200,6 @@ const DriftAnalysis = () => {
             </TableBody>
           </StyledTable>
         </TableContainer>
-      </Item>
-
-      <Item>
-        <Typography variant="h6" fontWeight={600} mb={2}>
-          Drift Over Time
-        </Typography>
-        <Box height={300} display="flex" alignItems="center" justifyContent="center" bgcolor="#f9f9f9" borderRadius={2}>
-          <Box textAlign="center">
-            <TimelineIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 1 }} />
-            <Typography color="text.secondary">Drift trend visualization will appear here</Typography>
-            <Typography variant="caption" color="text.secondary">
-              (This would show the number of drifts detected over time)
-            </Typography>
-          </Box>
-        </Box>
       </Item>
 
       <Item>

@@ -1,1 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Build outputs
+dashboard/build/
+dashboard/.vercel/
+
+# Logs
+*.log
+/tmp/
+runtime_logs_*/
+drift_log.json
+reconciliation_log.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+
+# Project specific
 *.deb
+policies/*.yaml
+intent_*.yaml
+!intent.yaml
+debug_*.py

@@ -14,6 +14,8 @@ import Overview from './pages/Overview';
 import DriftAnalysis from './pages/DriftAnalysis';
 import EnforcementRules from './pages/EnforcementRules';
 import Settings from './pages/Settings';
+import IntentInput from './pages/IntentInput';
+import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 
 const drawerWidth = 240;
 
@@ -25,6 +27,7 @@ type MenuItem = {
 
 const menuItems: MenuItem[] = [
   { text: 'Overview', icon: <HomeIcon />, path: '/' },
+  { text: 'New Intent', icon: <AddCircleOutlineIcon />, path: '/intent' },
   { text: 'Drift Analysis', icon: <TimelineIcon />, path: '/drift' },
   { text: 'Enforcement Rules', icon: <SecurityIcon />, path: '/rules' },
   { text: 'Settings', icon: <SettingsIcon />, path: '/settings' },
@@ -69,7 +72,7 @@ function App() {
 
 function AppContent() {
   const location = useLocation();
-  
+
   return (
     <Box sx={{ display: 'flex' }}>
       {/* App Bar */}
@@ -81,102 +84,104 @@ function AppContent() {
           backgroundColor: 'white',
           color: 'black',
           boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-            }}
-          >
-            <Toolbar>
-              <Typography variant="h6" noWrap component="div">
-                Intent-Based Security Dashboard
-              </Typography>
-              <Box sx={{ flexGrow: 1 }} />
-              <Typography variant="body2" color="text.secondary">
-                Last updated: {new Date().toLocaleString()}
-              </Typography>
-            </Toolbar>
-          </AppBar>
+        }}
+      >
+        <Toolbar>
+          <Typography variant="h6" noWrap component="div">
+            Intent-Based Security Dashboard
+          </Typography>
+          <Box sx={{ flexGrow: 1 }} />
+          <Typography variant="body2" color="text.secondary">
+            Last updated: {new Date().toLocaleString()}
+          </Typography>
+        </Toolbar>
+      </AppBar>
 
-          {/* Sidebar */}
-          <Drawer
-            sx={{
-              width: drawerWidth,
-              flexShrink: 0,
-              '& .MuiDrawer-paper': {
-                width: drawerWidth,
-                boxSizing: 'border-box',
-                bgcolor: '#1e293b',
-                color: 'white',
-              },
-            }}
-            variant="permanent"
-            anchor="left"
-          >
-            <Toolbar>
-              <DashboardIcon sx={{ mr: 2 }} />
-              <Typography variant="h6" noWrap component="div">
-                Security Dashboard
-              </Typography>
-            </Toolbar>
-            <Divider sx={{ bgcolor: 'rgba(255,255,255,0.1)' }} />
-            <List>
-              {menuItems.map((item) => (
-                <ListItem 
-                  key={item.text}
-                  disablePadding
-                  sx={{
-                    color: 'rgba(255, 255, 255, 0.7)',
-                    '& .MuiListItemButton-root': {
-                      color: 'inherit',
-                      '&:hover': {
-                        backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                        color: 'white',
-                      },
-                      '&.Mui-selected': {
-                        backgroundColor: 'rgba(25, 118, 210, 0.2)',
-                        color: 'white',
-                        '&:hover': {
-                          backgroundColor: 'rgba(25, 118, 210, 0.3)',
-                        },
-                      },
+      {/* Sidebar */}
+      <Drawer
+        sx={{
+          width: drawerWidth,
+          flexShrink: 0,
+          '& .MuiDrawer-paper': {
+            width: drawerWidth,
+            boxSizing: 'border-box',
+            bgcolor: '#1e293b',
+            color: 'white',
+          },
+        }}
+        variant="permanent"
+        anchor="left"
+      >
+        <Toolbar>
+          <DashboardIcon sx={{ mr: 2 }} />
+          <Typography variant="h6" noWrap component="div">
+            Security Dashboard
+          </Typography>
+        </Toolbar>
+        <Divider sx={{ bgcolor: 'rgba(255,255,255,0.1)' }} />
+        <List>
+          {menuItems.map((item) => (
+            <ListItem
+              key={item.text}
+              disablePadding
+              sx={{
+                color: 'rgba(255, 255, 255, 0.7)',
+                '& .MuiListItemButton-root': {
+                  color: 'inherit',
+                  '&:hover': {
+                    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                    color: 'white',
+                    // ... existing styles ...
+                  },
+                  '&.Mui-selected': {
+                    backgroundColor: 'rgba(25, 118, 210, 0.2)',
+                    color: 'white',
+                    '&:hover': {
+                      backgroundColor: 'rgba(25, 118, 210, 0.3)',
                     },
-                  }}
-                >
-                  <ListItemButton 
-                    component={Link} 
-                    to={item.path}
-                    selected={location.pathname === item.path}
-                    sx={{
-                      width: '100%',
-                      padding: '8px 16px',
-                    }}
-                  >
-                    <ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}>{item.icon}</ListItemIcon>
-                    <ListItemText primary={item.text} />
-                  </ListItemButton>
-                </ListItem>
-              ))}
-            </List>
-          </Drawer>
+                  },
+                },
+              }}
+            >
+              <ListItemButton
+                component={Link}
+                to={item.path}
+                selected={location.pathname === item.path}
+                sx={{
+                  width: '100%',
+                  padding: '8px 16px',
+                }}
+              >
+                <ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}>{item.icon}</ListItemIcon>
+                <ListItemText primary={item.text} />
+              </ListItemButton>
+            </ListItem>
+          ))}
+        </List>
+      </Drawer>
 
-          {/* Main Content */}
-          <Box
-            component="main"
-            sx={{
-              flexGrow: 1,
-              bgcolor: 'background.default',
-              p: 3,
-              marginTop: '64px',
-              minHeight: 'calc(100vh - 64px)',
-            }}
-          >
-            <Container maxWidth="xl">
-              <Routes>
-                <Route path="/" element={<Overview />} />
-                <Route path="/drift" element={<DriftAnalysis />} />
-                <Route path="/rules" element={<EnforcementRules />} />
-                <Route path="/settings" element={<Settings />} />
-              </Routes>
-            </Container>
-          </Box>
-        </Box>
+      {/* Main Content */}
+      <Box
+        component="main"
+        sx={{
+          flexGrow: 1,
+          bgcolor: 'background.default',
+          p: 3,
+          marginTop: '64px',
+          minHeight: 'calc(100vh - 64px)',
+        }}
+      >
+        <Container maxWidth="xl">
+          <Routes>
+            <Route path="/" element={<Overview />} />
+            <Route path="/intent" element={<IntentInput />} />
+            <Route path="/drift" element={<DriftAnalysis />} />
+            <Route path="/rules" element={<EnforcementRules />} />
+            <Route path="/settings" element={<Settings />} />
+          </Routes>
+        </Container>
+      </Box>
+    </Box>
   );
 }
 

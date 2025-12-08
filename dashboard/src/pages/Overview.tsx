@@ -1,11 +1,11 @@
-import React from 'react';
-import { Box, Grid, Paper, Typography, Card, CardContent, LinearProgress, Button, Chip, Stack, Divider } from '@mui/material';
+import React, { useState, useEffect } from 'react';
+import { Box, Paper, Typography, Button, Chip, Stack, Divider, LinearProgress } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import SecurityIcon from '@mui/icons-material/Security';
 import WarningIcon from '@mui/icons-material/Warning';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import TimelineIcon from '@mui/icons-material/Timeline';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import TimelineIcon from '@mui/icons-material/Timeline';
+import { triggerPipeline, getDriftLogs, getContainers, getPolicies } from '../services/api';
 
 const Item = styled(Paper)(({ theme }) => ({
   backgroundColor: theme.palette.mode === 'dark' ? '#1A2027' : '#fff',
@@ -35,9 +35,11 @@ const PipelineStep = ({ step, completed, active, last }: { step: string; complet
     >
       {completed ? '✓' : step}
     </Box>
-    <Typography variant="body2" color={active ? 'primary' : 'text.secondary'} sx={{ fontWeight: active ? 600 : 400 }}>
-      {step}
-    </Typography>
+    <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+      <Typography variant="body2" color={active ? 'primary' : 'text.secondary'} sx={{ fontWeight: active ? 600 : 400 }}>
+        {step}
+      </Typography>
+    </Box>
     {!last && (
       <Box sx={{ flex: 1, mx: 1 }}>
         <Divider sx={{ borderColor: completed ? '#4caf50' : '#e0e0e0', borderWidth: 2 }} />
@@ -46,108 +48,42 @@ const PipelineStep = ({ step, completed, active, last }: { step: string; complet
   </Box>
 );
 
-const PipelineStatus = () => {
+const PipelineStatus = ({ currentStep }: { currentStep: number }) => {
   const steps = [
-    { id: 1, name: 'Intent Validated', completed: true },
-    { id: 2, name: 'Policies Compiled', completed: true },
-    { id: 3, name: 'Traffic Captured', completed: true },
-    { id: 4, name: 'Drift Detected', completed: true },
-    { id: 5, name: 'Rules Enforced', completed: false },
+    { id: 1, name: 'Intent Validated' },
+    { id: 2, name: 'Policies Compiled' },
+    { id: 3, name: 'Traffic Captured' },
+    { id: 4, name: 'Drift Detected' },
+    { id: 5, name: 'Rules Enforced' },
   ];
 
   return (
-    <Item>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-        <Typography variant="h6" fontWeight={600}>
-          Security Pipeline Status
-        </Typography>
-        <Button
-          variant="contained"
-          color="primary"
-          startIcon={<PlayArrowIcon />}
-          size="small"
-          sx={{ textTransform: 'none', borderRadius: '20px' }}
-        >
-          Run Full Pipeline
-        </Button>
-      </Box>
-      
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+    <Box width="100%">
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: 3, width: '100%' }}>
         {steps.map((step, index) => (
           <PipelineStep
             key={step.id}
             step={(index + 1).toString()}
-            completed={step.completed}
-            active={!step.completed && (index === 0 || steps[index - 1]?.completed)}
+            completed={index < currentStep}
+            active={index === currentStep}
             last={index === steps.length - 1}
           />
         ))}
       </Box>
-      
+
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2 }}>
-        {steps.map((step) => (
-          <Typography key={step.id} variant="caption" color={step.completed ? 'success.main' : 'text.secondary'}>
+        {steps.map((step, index) => (
+          <Typography
+            key={step.id}
+            variant="caption"
+            color={index < currentStep ? 'success.main' : index === currentStep ? 'primary.main' : 'text.secondary'}
+            fontWeight={index === currentStep ? 600 : 400}
+          >
             {step.name}
           </Typography>
         ))}
       </Box>
-    </Item>
-  );
-};
-
-const SecurityScoreCard = () => {
-  const score = 85; // This would come from your data
-  const getColor = (score: number) => {
-    if (score >= 90) return 'success.main';
-    if (score >= 70) return 'info.main';
-    if (score >= 50) return 'warning.main';
-    return 'error.main';
-  };
-
-  return (
-    <Item>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-        <Typography variant="h6" fontWeight={600}>
-          Security Score
-        </Typography>
-        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-          <SecurityIcon color={score >= 90 ? 'success' : score >= 70 ? 'info' : score >= 50 ? 'warning' : 'error'} />
-          <Typography variant="h4" ml={1} color={getColor(score)}>
-            {score}
-          </Typography>
-          <Typography variant="body2" color="text.secondary" ml={1}>
-            /100
-          </Typography>
-        </Box>
-      </Box>
-      <LinearProgress
-        variant="determinate"
-        value={score}
-        sx={{
-          height: 10,
-          borderRadius: 5,
-          backgroundColor: '#e0e0e0',
-          '& .MuiLinearProgress-bar': {
-            backgroundColor: getColor(score),
-            borderRadius: 5,
-          },
-        }}
-      />
-      <Box display="flex" justifyContent="space-between" mt={1}>
-        <Typography variant="caption" color="text.secondary">
-          {score >= 90
-            ? 'Excellent security posture'
-            : score >= 70
-            ? 'Good security posture'
-            : score >= 50
-            ? 'Needs attention'
-            : 'Critical issues detected'}
-        </Typography>
-        <Typography variant="caption" color="text.secondary">
-          Last updated: {new Date().toLocaleTimeString()}
-        </Typography>
-      </Box>
-    </Item>
+    </Box>
   );
 };
 
@@ -156,7 +92,7 @@ const IntentSummaryCard = ({ container }: { container: any }) => (
     <Typography variant="h6" fontWeight={600} mb={2}>
       {container.name}
     </Typography>
-    
+
     <Box mb={2}>
       <Typography variant="subtitle2" color="text.secondary" mb={1}>
         🌐 Allowed Domains
@@ -167,7 +103,7 @@ const IntentSummaryCard = ({ container }: { container: any }) => (
         ))}
       </Stack>
     </Box>
-    
+
     <Box mb={2}>
       <Typography variant="subtitle2" color="text.secondary" mb={1}>
         🔌 Allowed Ports
@@ -178,7 +114,7 @@ const IntentSummaryCard = ({ container }: { container: any }) => (
         ))}
       </Stack>
     </Box>
-    
+
     <Box>
       <Typography variant="subtitle2" color="text.secondary" mb={1}>
         📝 Expected Behavior
@@ -188,69 +124,176 @@ const IntentSummaryCard = ({ container }: { container: any }) => (
   </Item>
 );
 
-const DriftAlertCard = () => (
-  <Item sx={{ backgroundColor: '#fff8e1' }}>
-    <Box display="flex" alignItems="center" mb={1}>
-      <WarningIcon color="warning" sx={{ mr: 1 }} />
-      <Typography variant="subtitle1" fontWeight={600}>
-        Drift Detected
-      </Typography>
-    </Box>
-    <Typography variant="body2" color="text.secondary" mb={2}>
-      3 containers have configuration drift from their intended state
-    </Typography>
-    <Button
-      variant="outlined"
-      color="warning"
-      size="small"
-      endIcon={<TimelineIcon />}
-      sx={{ textTransform: 'none', borderRadius: '20px' }}
-    >
-      View Drift Analysis
-    </Button>
-  </Item>
-);
-
 const Overview = () => {
-  // Mock data - replace with actual data from your backend
-  const containers = [
-    {
-      id: 1,
-      name: 'frontend-app',
-      allowedDomains: ['api-service', 'cdn.example.com'],
-      allowedPorts: [80, 443],
-      expectedBehavior: 'Web traffic only (HTTP/HTTPS) to backend services and CDN',
-    },
-    {
-      id: 2,
-      name: 'api-service',
-      allowedDomains: ['database', 'auth-service', 'redis'],
-      allowedPorts: [5432, 6379, 3000],
-      expectedBehavior: 'Database access and internal service communication only',
-    },
-  ];
+  const [containers, setContainers] = useState<any[]>([]);
+  const [driftCount, setDriftCount] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [score, setScore] = useState(100);
+  const [pipelineStep, setPipelineStep] = useState(5); // Default to all done
+
+  const fetchData = async () => {
+    try {
+      const [cnts, drifts, pols] = await Promise.all([
+        getContainers(),
+        getDriftLogs(),
+        getPolicies()
+      ]);
+
+      const uiContainers = cnts.map((c: any) => ({
+        id: c.name,
+        name: c.name,
+        allowedDomains: ['(managed by policy)'],
+        allowedPorts: ['(auto-detected)'],
+        expectedBehavior: c.image,
+        status: c.status
+      }));
+
+      setContainers(uiContainers);
+
+      const dCount = (Array.isArray(drifts) ? drifts : []).length;
+
+      // Calculate penalties
+      let penalty = 0;
+
+      // 1. Drift Penalty (10 pts each)
+      penalty += (dCount * 10);
+
+      // 2. Dangerous Ports Penalty (20 pts each)
+      // Iterate over policies to find warnings
+      let dangerousCount = 0;
+      if (Array.isArray(pols)) {
+        pols.forEach((p: any) => {
+          if (p.metadata?.annotations?.security_risk === 'High') {
+            dangerousCount++;
+          }
+        });
+      }
+      penalty += (dangerousCount * 20);
+
+      // 3. Unauthorized Container Penalty (Check drift logs for "Undeclared: ALL")
+      if (Array.isArray(drifts)) {
+        drifts.forEach((d: any) => {
+          if (d.undeclared_ports && d.undeclared_ports.includes('ALL')) {
+            penalty += 40; // Extra penalty for rogue containers
+          }
+        });
+      }
+
+      setScore(Math.max(0, 100 - penalty));
+      setDriftCount(dCount);
+
+    } catch (e) {
+      console.error("Failed to fetch dashboard data", e);
+    }
+  };
+
+
+
+  useEffect(() => {
+    fetchData();
+    const interval = setInterval(fetchData, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleRunPipeline = async () => {
+    setLoading(true);
+    setPipelineStep(0); // Reset steps
+
+    // Optimistic progress indicator
+    const progressTimer = setInterval(() => {
+      setPipelineStep(prev => Math.min(prev + 1, 4));
+    }, 800);
+
+    try {
+      await triggerPipeline();
+      setPipelineStep(5);
+      await fetchData();
+    } catch (e: any) {
+      console.error(e);
+      alert("Pipeline failed to start: " + (e.message || "Unknown error"));
+      setPipelineStep(0); // Reset on error
+    } finally {
+      clearInterval(progressTimer);
+      setLoading(false);
+    }
+  };
 
   return (
     <Box>
       <Typography variant="h5" fontWeight={600} mb={3}>
         Security Dashboard Overview
       </Typography>
-      
+
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '2fr 1fr' }, gap: 3, mb: 3 }}>
         <Box>
-          <PipelineStatus />
+          <Item>
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+              <Typography variant="h6" fontWeight={600}>
+                Security Pipeline Status
+              </Typography>
+              <Button
+                variant="contained"
+                color="primary"
+                startIcon={<PlayArrowIcon />}
+                size="small"
+                onClick={handleRunPipeline}
+                disabled={loading}
+                sx={{ textTransform: 'none', borderRadius: '20px' }}
+              >
+                {loading ? 'Running...' : 'Run Full Pipeline'}
+              </Button>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+              <Typography variant="body2" color="text.secondary">
+                Pipeline checks intent, compiles policies, captures traffic, detects drift, and enforces rules.
+              </Typography>
+            </Box>
+            <PipelineStatus currentStep={pipelineStep} />
+          </Item>
         </Box>
         <Box>
-          <SecurityScoreCard />
+          <Item>
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+              <Typography variant="h6" fontWeight={600}>Score</Typography>
+              <Typography variant="h4" color={score > 80 ? 'success.main' : 'warning.main'}>{score}</Typography>
+            </Box>
+            <LinearProgress variant="determinate" value={score} color={score > 80 ? 'success' : 'warning'} />
+            <Box display="flex" justifyContent="space-between" mt={1}>
+              <Typography variant="caption" color="text.secondary">
+                {score >= 90 ? 'Excellent' : score >= 70 ? 'Good' : 'Needs Attention'}
+              </Typography>
+            </Box>
+          </Item>
         </Box>
       </Box>
-      
-      <DriftAlertCard />
-      
+
+      {driftCount > 0 && (
+        <Item sx={{ backgroundColor: '#fff8e1', mb: 3 }}>
+          <Box display="flex" alignItems="center" mb={1}>
+            <WarningIcon color="warning" sx={{ mr: 1 }} />
+            <Typography variant="subtitle1" fontWeight={600}>
+              Drift Detected
+            </Typography>
+          </Box>
+          <Typography variant="body2" color="text.secondary" mb={2}>
+            {driftCount} drift events detected across containers.
+          </Typography>
+          <Button
+            variant="outlined"
+            color="warning"
+            size="small"
+            endIcon={<TimelineIcon />}
+            sx={{ textTransform: 'none', borderRadius: '20px' }}
+          >
+            View Drift Analysis
+          </Button>
+        </Item>
+      )}
+
       <Typography variant="h6" mt={4} mb={2} fontWeight={600}>
-        Container Intent Summary
+        Active Live Containers
       </Typography>
-      
+
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 3 }}>
         {containers.map((container) => (
           <Box key={container.id}>
