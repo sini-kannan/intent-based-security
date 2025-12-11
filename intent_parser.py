@@ -77,12 +77,23 @@ class IntentParser:
         'gcp': ['https'],
     }
     
+    # Common domains that should get .com appended if no TLD specified
+    COMMON_DOMAINS = {
+        'google', 'youtube', 'facebook', 'twitter', 'instagram', 'linkedin',
+        'github', 'stackoverflow', 'reddit', 'amazon', 'netflix', 'spotify',
+        'stripe', 'paypal', 'slack', 'zoom', 'microsoft', 'apple'
+    }
+    
     def __init__(self):
         # Compiled patterns for performance
         self.service_patterns = [
-            # L7 Domains (e.g., google.com)
+            # L7 Domains with TLD (e.g., google.com, api.stripe.com)
             (re.compile(r'(?:access|connect to|reach|use)\s+(?:to\s+)?([a-zA-Z0-9-]+\.[a-zA-Z0-9-]+\.[a-zA-Z]{2,}|[a-zA-Z0-9-]+\.[a-zA-Z]{2,})', re.IGNORECASE),
              lambda m, i: self._add_domain(m.group(1).lower(), i)),
+            
+            # Simple domain names without TLD (e.g., "access google", "access youtube")
+            (re.compile(r'(?:access|connect to|reach|use)\s+(?:to\s+)?([a-zA-Z0-9-]+)(?:\s|$)', re.IGNORECASE),
+             lambda m, i: self._add_domain_smart(m.group(1).lower(), i)),
 
             # Web/HTTP
             (re.compile(r'(?:access|use|connect to|enable|allow|need|require)s?\s+(?:the\s+)?(?:web|internet|http|https)(?:\s+services?)?', re.IGNORECASE), 
@@ -184,6 +195,28 @@ class IntentParser:
             self._add_service(service, intent)
         elif '.' in service and not service.endswith('.'):
              self._add_domain(service, intent)
+    
+    def _add_domain_smart(self, name: str, intent: Dict) -> None:
+        """
+        Intelligently handles domain names - appends .com to common domains.
+        Examples: 'google' -> 'google.com', 'youtube' -> 'youtube.com'
+        """
+        # Ignore if it's a known service keyword (avoid false positives)
+        if name in self.SERVICE_PORTS or name in self.SERVICE_ALIASES:
+            return
+        
+        # If it's in our common domains list, append .com
+        if name in self.COMMON_DOMAINS:
+            full_domain = f"{name}.com"
+            self._add_domain(full_domain, intent)
+        # If it already has a dot, treat it as a full domain
+        elif '.' in name:
+            self._add_domain(name, intent)
+        # Otherwise, assume it's a domain and append .com
+        else:
+            # For unknown single-word domains, append .com as well
+            full_domain = f"{name}.com"
+            self._add_domain(full_domain, intent)
             
     def _add_domain(self, domain: str, intent: Dict) -> None:
         """Whitelists a domain and enables required DNS/Web ports."""

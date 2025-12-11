@@ -54,6 +54,11 @@ async def root():
 @app.post("/api/intents/", response_model=IntentResponse)
 async def create_intent(intent: IntentRequest):
     try:
+        print(f"\nPOLICY CREATION REQUEST")
+        print(f"{'='*31}")
+        print(f"Container: {intent.container_name}")
+        print(f"Intent: {intent.text}")
+        
         # Import here to avoid circular dependency issues if any
         sys.path.append(str(PARENT_DIR))
         import intent_parser
@@ -67,6 +72,9 @@ async def create_intent(intent: IntentRequest):
         file_path = PARENT_DIR / filename
         with open(file_path, "w") as f:
             f.write(yaml_content)
+        
+        print(f"✓ Policy generated successfully")
+        print(f"✓ Saved to: {filename}\n")
 
         new_intent = {
             "id": str(len(intents_db) + 1),
@@ -79,6 +87,7 @@ async def create_intent(intent: IntentRequest):
         intents_db.append(new_intent)
         return new_intent
     except Exception as e:
+        print(f"✗ Error creating policy: {str(e)}\n")
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.get("/api/intents/", response_model=List[dict])
