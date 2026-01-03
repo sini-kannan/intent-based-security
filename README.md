@@ -46,15 +46,17 @@ This project is architected according to industry-standard security principles:
 *   Standard firewall updates can drop active connections.
 *   This system builds a secondary chain (`INTENT_TMP`), populates rules, and **atomically swaps** the pointer in the kernel. P99 latency < 50ms.
 
+![Zero-Downtime Proof](docs/zero-downtime.png)
+
 ---
 
 ## 🎥 Video Demonstration: Zero-Downtime Atomic Swap
 Watch the system in action, maintaining 100% traffic continuity during a live security policy change.
 
-[![Zero-Downtime Demo - Click to Play](docs/demo-thumbnail.png)](docs/zero-downtime.mp4)
+[![Zero-Downtime Demo - Click to Play](docs/zero-downtime.png)](docs/zero-downtime.mp4)
 
 > [!TIP]
-> Click the image above to view the full video demonstration (requires a viewer that supports MP4 playback).
+> Click the image above to view the full video demonstration.
 
 ---
 
@@ -80,6 +82,10 @@ Watch the system in action, maintaining 100% traffic continuity during a live se
 ### 1. Define Intent
 Navigate to the Dashboard (`localhost:3000`) and enter a requirement:
 > *"My container needs to connect to the postgres database and send emails."*
+
+![Intents Example 1 - Stripe](docs/intent_01.png)
+![Intents Example 2 - Telnet](docs/intent_02.png)
+![Intents Example 3 - Microservices](docs/intent_03.png)
 
 ### 2. Logical Parsing
 The system identifies:
