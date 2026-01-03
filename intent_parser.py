@@ -1,18 +1,23 @@
 import re
 from typing import Dict, List, Optional, Union
 import yaml
+import requests
+import json
+import sys
+import ipaddress
 
 class IntentParser:
     """
     Converts natural language intents into structured YAML network policies.
+    Supports both RegEx (Deterministic) and LLM (Probabilistic) parsing.
     """
     
-    # Service to port mappings
+    # Service to port mappings (Used for Regex Mode and as fallback)
     SERVICE_PORTS = {
         # Web services
         'http': [80],
         'https': [443],
-        'web': [80, 443],  # Web implies both HTTP and HTTPS
+        'web': [80, 443],
         'www': [80, 443],
         
         # Database services
@@ -33,7 +38,7 @@ class IntentParser:
         'pop3': [110, 995],
         
         # Network services
-        'dns': [53, 853],  # DNS over TLS on 853
+        'dns': [53, 853],
         'ldap': [389, 636],
         'ntp': [123],
         
@@ -46,82 +51,47 @@ class IntentParser:
         # Common protocols
         'rdp': [3389],
         'vnc': [5900, 5901],
+        
+        # Microservices & Gateways
+        'api-gateway': [8080],
+        'gateway': [8080],
     }
     
     # Common service aliases and categories
     SERVICE_ALIASES = {
-        # Database aliases
         'database': ['mysql', 'postgres', 'mongodb', 'redis'],
         'db': ['mysql', 'postgres', 'mongodb', 'redis'],
         'sql': ['mysql', 'postgres'],
         'nosql': ['mongodb', 'redis'],
-        
-        # Web and API
         'api': ['https'],
         'rest': ['https'],
         'graphql': ['https'],
-        
-        # Email and communication
-        'email': ['smtp', 'imap', 'pop3'],
-        'mail': ['smtp', 'imap', 'pop3'],
+        'email': ['smtp'], # Default to send
+        'mail': ['smtp'],
         'sendmail': ['smtp'],
-        
-        # Network services
+        'send-email': ['smtp'],
+        'receive-email': ['imap', 'pop3'],
+        'inbox': ['imap', 'pop3'],
         'internet': ['http', 'https', 'dns'],
         'browsing': ['http', 'https', 'dns'],
         'network': ['dns', 'ntp'],
-        
-        # Cloud services
         'aws': ['https'],
         'azure': ['https'],
         'gcp': ['https'],
     }
     
-    # Common domains that should get .com appended if no TLD specified
     COMMON_DOMAINS = {
         'google', 'youtube', 'facebook', 'twitter', 'instagram', 'linkedin',
         'github', 'stackoverflow', 'reddit', 'amazon', 'netflix', 'spotify',
         'stripe', 'paypal', 'slack', 'zoom', 'microsoft', 'apple'
     }
     
-    def __init__(self):
-        # Compiled patterns for performance
-        self.service_patterns = [
-            # L7 Domains with TLD (e.g., google.com, api.stripe.com)
-            (re.compile(r'(?:access|connect to|reach|use)\s+(?:to\s+)?([a-zA-Z0-9-]+\.[a-zA-Z0-9-]+\.[a-zA-Z]{2,}|[a-zA-Z0-9-]+\.[a-zA-Z]{2,})', re.IGNORECASE),
-             lambda m, i: self._add_domain(m.group(1).lower(), i)),
-            
-            # Simple domain names without TLD (e.g., "access google", "access youtube")
-            (re.compile(r'(?:access|connect to|reach|use)\s+(?:to\s+)?([a-zA-Z0-9-]+)(?:\s|$)', re.IGNORECASE),
-             lambda m, i: self._add_domain_smart(m.group(1).lower(), i)),
-
-            # Web/HTTP
-            (re.compile(r'(?:access|use|connect to|enable|allow|need|require)s?\s+(?:the\s+)?(?:web|internet|http|https)(?:\s+services?)?', re.IGNORECASE), 
-             lambda s, i: self._add_service('web', i)),
-            
-            # Databases
-            (re.compile(r'(?:connect to|access|use|enable|allow|need|require)s?\s+(?:the\s+)?(database|postgres|postgresql|mysql|mongodb|redis)', re.IGNORECASE), 
-             lambda m, i: self._add_service(m.group(1).lower(), i)),
-            
-            # Email
-            (re.compile(r'(?:send|receive|access|use|enable|allow|need|require)s?\s+(?:to\s+)?(email|mail|smtp)', re.IGNORECASE), 
-             lambda m, i: self._add_service(m.group(1).lower(), i)),
-            
-            # DNS
-            (re.compile(r'(?:enable|allow|need|require)s?\s+(?:to\s+)?(?:use\s+)?(dns|domain name resolution)', re.IGNORECASE), 
-             lambda m, i: self._add_service('dns', i)),
-            
-            # Generic catch-all
-            (re.compile(r'(?:allow|enable|need|require)s?\s+(?:to\s+)?(?:access\s+(?:to\s+)?)?(\w+)(?:\s+services?)?', re.IGNORECASE), 
-             self._parse_service_access),
-             
-            (re.compile(r'(?:needs?|requires?|wants?|should)\s+(?:to\s+)?(?:talk|connect)(?:\s+to)?(?:\s+the)?\s+(\w+)(?:\s+service)?', re.IGNORECASE), 
-             self._parse_service_access),
-             
-            (re.compile(r'(?:allow|enable|need|require)s?\s+(?:to\s+)?(\w+)(?:\s+access)?', re.IGNORECASE), 
-             self._parse_service_access),
-        ]
-        
+    STOP_WORDS = {
+        'the', 'a', 'an', 'on', 'to', 'for', 'with', 'using', 'through', 
+        'access', 'connect', 'reach', 'talk', 'needs', 'require', 'needed',
+        'legacy', 'mainframe', 'server', 'service', 'app', 'application'
+    }
+    
     DANGEROUS_PORTS = {
         21: "FTP (Plain text credentials)",
         23: "Telnet (Plain text traffic)",
@@ -129,10 +99,140 @@ class IntentParser:
         3389: "RDP (Remote Desktop)",
         22: "SSH (Sensitive administrative access)",
     }
+    
+    def __init__(self):
+        # Compiled patterns for Regex Mode
+        self.service_patterns = [
+            (re.compile(r'(?:access|connect to|reach|use)\s+(?:to\s+)?([a-zA-Z0-9-]+\.[a-zA-Z0-9-]+\.[a-zA-Z]{2,}|[a-zA-Z0-9-]+\.[a-zA-Z]{2,})', re.IGNORECASE),
+             lambda m, i: self._add_domain(m.group(1).lower(), i)),
+             
+            (re.compile(r'(?:access|connect to|reach|use)\s+(?:to\s+)?([a-zA-Z0-9-]+)(?:\s|$)', re.IGNORECASE),
+             lambda m, i: self._add_domain_smart(m.group(1).lower(), i)),
+
+            (re.compile(r'(?:access|use|connect to|enable|allow|need|require)s?\s+(?:the\s+)?(?:web|internet|http|https)(?:\s+services?)?', re.IGNORECASE), 
+             lambda s, i: self._add_service('web', i)),
+            
+            (re.compile(r'(?:connect to|access|use|enable|allow|need|require)s?\s+(?:the\s+)?(database|postgres|postgresql|mysql|mongodb|redis)', re.IGNORECASE), 
+             lambda m, i: self._add_service(m.group(1).lower(), i)),
+            
+            (re.compile(r'(?:send|receive|access|use|enable|allow|need|require)s?\s+(?:to\s+)?(email|mail|smtp)', re.IGNORECASE), 
+             lambda m, i: self._add_service(m.group(1).lower(), i)),
+            
+            (re.compile(r'(?:enable|allow|need|require)s?\s+(?:to\s+)?(?:use\s+)?(dns|domain name resolution)', re.IGNORECASE), 
+             lambda m, i: self._add_service('dns', i)),
+            
+            (re.compile(r'(?:allow|enable|need|require)s?\s+(?:to\s+)?(?:access\s+(?:to\s+)?)?(\w+)(?:\s+services?)?', re.IGNORECASE), 
+             self._parse_service_access),
+             
+            (re.compile(r'(?:needs?|requires?|wants?|should)\s+(?:to\s+)?(?:talk|connect|communicate)(?:\s+to)?(?:\s+the)?\s+([a-zA-Z0-9-]+)(?:\s+service)?', re.IGNORECASE), 
+             self._parse_service_access),
+             
+            (re.compile(r'(?:allow|enable|need|require)s?\s+(?:to\s+)?([a-zA-Z0-9-]+)(?:\s+access)?', re.IGNORECASE), 
+             self._parse_service_access),
+             
+            # Microservices specific pattern: "A talks to B"
+            (re.compile(r'([a-zA-Z0-9-]+)\s+(?:talks?|connects?|communicates?)\s+to\s+([a-zA-Z0-9-]+)', re.IGNORECASE),
+             self._parse_microservice_interaction),
+             
+            # IP address support
+            (re.compile(r'\b(?:\d{1,3}\.){3}\d{1,3}\b'),
+             lambda m, i: self._add_domain(m.group(0), i)),
+             
+            # Contextual domain pattern: "via SendGrid", "on 1.2.3.4"
+            (re.compile(r'(?:via|through|on|at)\s+([a-zA-Z0-9.-]+)', re.IGNORECASE),
+             lambda m, i: self._add_domain_smart(m.group(1).lower(), i)),
+             
+            # Fallback for bare service names
+            (re.compile(r'\b(postgres|postgresql|mysql|mongodb|redis|http|https|ssh|telnet|dns|ftp|smtp|imap|pop3|api-gateway|gateway)\b', re.IGNORECASE),
+             lambda m, i: self._add_service(m.group(1).lower(), i)),
+        ]
 
     def parse(self, text: str, container_name: str = "my-container") -> Dict:
-        """Parses inputs into K8s-style NetworkPolicy entities."""
-        intent = {
+        """
+        Parses inputs into K8s-style NetworkPolicy entities.
+        
+        TOGGLE MODE HERE:
+        Uncomment the one you want to use.
+        """
+        
+        # --- MODE 1: REGEX (Deterministic, Fast, Offline) ---
+        return self._parse_with_regex(text, container_name)
+        
+        # --- MODE 2: LLM (Smart, Context-Aware, Requires Ollama) ---
+        # If Ollama fails, it will fallback to Regex automatically.
+        # return self._parse_with_llm(text, container_name)
+
+    def _parse_with_llm(self, text: str, container_name: str) -> Dict:
+        """Uses a local LLM (Ollama) to parse intents."""
+        print("[INFO] Parsing with local LLM...")
+        
+        prompt = f"""
+        You are a network security expert. Extract technical requirements from the user's intent.
+        
+        User Intent: "{text}"
+        
+        Return ONLY a JSON object with this structure:
+        {{
+            "services": ["service_name_1", "service_name_2"],
+            "domains": ["domain1.com", "domain2.com"]
+        }}
+        
+        Known services keys you can use: 
+        web, http, https, dns, ssh, telnet, ftp, smtp, imap, pop3, mysql, postgres, mongodb, redis.
+        
+        If the user mentions a specific port (e.g. "port 8080"), add it as a service named "port-8080".
+        If the intent is vague, assume reasonable defaults (e.g. "ping" -> "icmp" or "network").
+        """
+        
+        try:
+            response = requests.post(
+                "http://localhost:11434/api/generate",
+                json={
+                    "model": "llama3",  # Or 'mistral', 'tinyllama'
+                    "prompt": prompt,
+                    "stream": False,
+                    "format": "json"
+                },
+                timeout=5 # Fail fast if not running
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                data = json.loads(result.get('response', '{}'))
+                
+                # Convert LLM JSON to Policy Dict
+                intent = self._create_base_intent(container_name)
+                
+                # Apply Services
+                for svc in data.get('services', []):
+                    # Handle raw ports "port-8080"
+                    if svc.startswith("port-"):
+                        try:
+                            port = int(svc.split("-")[1])
+                            intent['spec']['egress'].append({
+                                'ports': [{'number': port, 'protocol': 'TCP'}]
+                            })
+                        except: pass
+                    else:
+                        self._add_service(svc, intent)
+                
+                # Apply Domains
+                for dom in data.get('domains', []):
+                    self._add_domain(dom, intent)
+                
+                self._enrich_security_risks(intent)
+                return intent
+                
+            else:
+                print(f"[WARN] LLM Error {response.status_code}, falling back to Regex.")
+                return self._parse_with_regex(text, container_name)
+                
+        except Exception as e:
+            print(f"[WARN] LLM unavailable ({str(e)}), falling back to Regex.")
+            return self._parse_with_regex(text, container_name)
+
+    def _create_base_intent(self, container_name: str) -> Dict:
+        return {
             'apiVersion': 'v1',
             'kind': 'ContainerIntent',
             'metadata': {
@@ -141,38 +241,10 @@ class IntentParser:
             },
             'spec': { 'egress': [] }
         }
-        
+
+    def _enrich_security_risks(self, intent: Dict):
+        """Scans the generated intent for high-risk ports."""
         alerts = []
-        
-        # Split by sentence boundaries to handle complex multi-part intents
-        sentences = re.split(r'[.!?](?:\s+|$)', text)
-        
-        for line in sentences:
-            line = line.strip()
-            if not line: continue
-            
-            matched = False
-            for pattern, handler in self.service_patterns:
-                match = pattern.search(line)
-                if match:
-                    # Invoke specific handler for the match
-                    if handler == self._parse_service_access:
-                        if match.lastindex and match.lastindex > 0:
-                            handler(match.group(1).lower(), intent)
-                    elif handler == self._add_domain:
-                        if match.lastindex and match.lastindex > 0:
-                            handler(match.group(1).lower(), intent)
-                    else:
-                        handler(match, intent)
-                    
-                    matched = True
-                    # Don't break; allow multiple keywords per sentence
-            
-            if not matched:
-                # Fallback logging could go here
-                pass
-    
-        # Scan for policy violations
         for rule in intent['spec']['egress']:
             for port_info in rule.get('ports', []):
                 p = port_info.get('number')
@@ -184,8 +256,38 @@ class IntentParser:
             intent['metadata']['annotations']['warnings'] = "; ".join(alerts)
             intent['metadata']['annotations']['security_risk'] = "High"
 
+    def _parse_with_regex(self, text: str, container_name: str) -> Dict:
+        """Original Regex Logic (Refactored)"""
+        print("[INFO] Parsing with regex engine...")
+        intent = self._create_base_intent(container_name)
+        
+        # Split by sentence boundaries, commas, and conjunctions
+        # Use a lookahead to ensure dots are only splitters if they end a sentence
+        sentences = re.split(r'(?:[.!?](?:\s+|$))|[;,]|\s+and\s+', text)
+        
+        for line in sentences:
+            line = line.strip()
+            if not line: continue
+            
+            matched = False
+            for pattern, handler in self.service_patterns:
+                matches = pattern.finditer(line)
+                for match in matches:
+                    if handler == self._parse_service_access:
+                        if match.lastindex and match.lastindex > 0:
+                            handler(match.group(1).lower(), intent)
+                    elif handler == self._add_domain:
+                        if match.lastindex and match.lastindex > 0:
+                            handler(match.group(1).lower(), intent)
+                    elif handler == self._parse_microservice_interaction:
+                        handler(match.group(1).lower(), match.group(2).lower(), intent)
+                    else:
+                        handler(match, intent)
+                    matched = True
+            
+        self._enrich_security_risks(intent)
         return intent
-    
+
     def _parse_service_access(self, service: str, intent: Dict) -> None:
         """Resolves service names/aliases to port rules."""
         if service in self.SERVICE_ALIASES:
@@ -195,42 +297,60 @@ class IntentParser:
             self._add_service(service, intent)
         elif '.' in service and not service.endswith('.'):
              self._add_domain(service, intent)
-    
+             
+    def _parse_microservice_interaction(self, source: str, target: str, intent: Dict) -> None:
+        """Handles patterns like 'frontend talks to redis'."""
+        if source not in self.STOP_WORDS:
+            # We could use source to filter/tag, but for now we just parse the target
+            self._parse_service_access(target, intent)
+        else:
+            # If source is a stop word, maybe target is actually the service
+            self._parse_service_access(source, intent)
+            self._parse_service_access(target, intent)
+
     def _add_domain_smart(self, name: str, intent: Dict) -> None:
-        """
-        Intelligently handles domain names - appends .com to common domains.
-        Examples: 'google' -> 'google.com', 'youtube' -> 'youtube.com'
-        """
-        # Ignore if it's a known service keyword (avoid false positives)
-        if name in self.SERVICE_PORTS or name in self.SERVICE_ALIASES:
+        if name in self.STOP_WORDS or len(name) < 2 or name.isdigit():
+            return
+            
+        if name in self.SERVICE_PORTS or name in self.SERVICE_ALIASES: 
+            self._add_service(name, intent)
             return
         
-        # If it's in our common domains list, append .com
+        # Check if it's an IP highlight
+        if self._is_ip(name):
+            self._add_domain(name, intent)
+            return
+
         if name in self.COMMON_DOMAINS:
-            full_domain = f"{name}.com"
-            self._add_domain(full_domain, intent)
-        # If it already has a dot, treat it as a full domain
+            self._add_domain(f"{name}.com", intent)
         elif '.' in name:
             self._add_domain(name, intent)
-        # Otherwise, assume it's a domain and append .com
         else:
-            # For unknown single-word domains, append .com as well
-            full_domain = f"{name}.com"
-            self._add_domain(full_domain, intent)
+            self._add_domain(f"{name}.com", intent)
+
+    def _is_ip(self, val: str) -> bool:
+        try:
+            ipaddress.ip_address(val)
+            return True
+        except ValueError:
+            return False
             
     def _add_domain(self, domain: str, intent: Dict) -> None:
-        """Whitelists a domain and enables required DNS/Web ports."""
-        self._add_service('web', intent)
-        
-        # Attach domain to the first available rule (simplification for prototype)
+        # Only add web ports if it's NOT an IP address
+        if not self._is_ip(domain):
+            self._add_service('web', intent)
+            
         target_rule = next((r for r in intent['spec']['egress'] if any(p['number'] == 443 for p in r.get('ports', []))), None)
         
         if not target_rule and intent['spec']['egress']:
              target_rule = intent['spec']['egress'][0]
              
-        if target_rule:
-            if 'domains' not in target_rule: target_rule['domains'] = []
-            if domain not in target_rule['domains']: target_rule['domains'].append(domain)
+        if not target_rule:
+            intent['spec']['egress'].append({'ports': []})
+            target_rule = intent['spec']['egress'][-1]
+
+        if 'domains' not in target_rule: target_rule['domains'] = []
+        if domain not in target_rule['domains']: target_rule['domains'].append(domain)
     
     def _add_service(self, service: str, intent: Dict) -> None:
         if service in self.SERVICE_ALIASES:
@@ -240,21 +360,14 @@ class IntentParser:
         self._add_single_service(service, intent)
     
     def _add_single_service(self, service: str, intent: Dict) -> None:
-        """Add a single service to the intent"""
-        if service not in self.SERVICE_PORTS:
-            return
-            
-        # SPECIAL HANDLING: If 'web' or 'internet' is requested, usually we need DNS too
-        if service in ['web', 'internet', 'browsing']:
-            self._add_single_service('dns', intent)
+        if service not in self.SERVICE_PORTS: return
+        if service in ['web', 'internet', 'browsing']: self._add_single_service('dns', intent)
 
-        # Get all existing ports
         existing_ports = set()
         for rule in intent['spec']['egress']:
             for port in rule.get('ports', []):
                 existing_ports.add((port['number'], port.get('protocol', 'TCP')))
         
-        # Add ports that aren't already in the rules
         new_ports = [
             (port, 'TCP') if isinstance(port, int) else port
             for port in self.SERVICE_PORTS[service]
@@ -262,45 +375,29 @@ class IntentParser:
         ]
         
         if new_ports:
-            # Group by protocol
             ports_by_protocol = {}
             for port in new_ports:
-                if isinstance(port, tuple):
-                    port_num, protocol = port
-                else:
-                    port_num, protocol = port, 'TCP'
+                if isinstance(port, tuple): port_num, protocol = port
+                else: port_num, protocol = port, 'TCP'
                     
-                if protocol not in ports_by_protocol:
-                    ports_by_protocol[protocol] = []
+                if protocol not in ports_by_protocol: ports_by_protocol[protocol] = []
                 ports_by_protocol[protocol].append(port_num)
             
-            # Add a rule for each protocol
             for protocol, ports in ports_by_protocol.items():
                 intent['spec']['egress'].append({
-                    'ports': [
-                        {'number': port, 'protocol': protocol.upper()}
-                        for port in sorted(ports)
-                    ]
+                    'ports': [{'number': port, 'protocol': protocol.upper()} for port in sorted(ports)]
                 })
     
     def to_yaml(self, intent: Dict) -> str:
-        """Convert intent dictionary to YAML string"""
         return yaml.dump(intent, default_flow_style=False, sort_keys=False)
 
 
 def parse_intent(text: str, container_name: str = "my-container") -> str:
-    """Parse natural language intent and return YAML string."""
     parser = IntentParser()
     intent = parser.parse(text, container_name)
     return parser.to_yaml(intent)
 
 
 if __name__ == "__main__":
-    test_intent = """
-    My container needs to access google.com.
-    """
-    
-    print("Parsing intent:")
-    print(test_intent)
-    print("\nGenerated YAML:")
+    test_intent = "My container needs to access google.com."
     print(parse_intent(test_intent, "example-app"))

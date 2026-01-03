@@ -9,3 +9,5 @@ spec:
       ports:
         - number: 443
           protocol: TCP
+  - service: mongodb
+  - service: mongodb

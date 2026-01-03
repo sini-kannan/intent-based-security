@@ -1,6 +1,0 @@
-apiVersion: v1
-kind: ContainerIntent
-metadata:
-  name: db-service
-spec:
-  egress: []
