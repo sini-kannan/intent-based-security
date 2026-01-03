@@ -4,7 +4,7 @@
 ![Python](https://img.shields.io/badge/Python-3.9+-3776AB?logo=python) ![Docker](https://img.shields.io/badge/Docker-Enabled-2496ED?logo=docker) ![React](https://img.shields.io/badge/React-Dashboard-61DAFB?logo=react) ![Status](https://img.shields.io/badge/Status-Production%20Ready-success)
 
 ## 💡 Overview
-This system eliminates the complexity of manual firewall configuration by interpreting **Natural Language** ("Allow web access") and converting it into atomic **Zero-Trust Policies**. It features a **Hybrid Intent Engine** capable of running in deterministic mode (Regex) or probabilistic mode (LLM-Ready), making it suitable for both resource-constrained and AI-native environments.
+This system eliminates the complexity of manual firewall configuration by interpreting **Natural Language** ("Allow web access") and converting it into atomic **Zero-Trust Policies**. It features a **Hybrid Intent Engine** capable of running in deterministic mode (Regex) or probabilistic mode (LLM-Ready).
 
 **Key Value Proposition:**
 > *"Bridging the semantic gap between Developer User Stories and Low-Level Network Security."*
@@ -50,30 +50,59 @@ This project is architected according to industry-standard security principles:
 
 ---
 
-## 🎥 Video Demonstration: Zero-Downtime Atomic Swap
-Watch the system in action, maintaining 100% traffic continuity during a live security policy change.
+## 🏗️ System Architecture
 
-[![Zero-Downtime Demo - Click to Play](docs/zero-downtime.png)](docs/zero-downtime.mp4)
+The following diagram illustrates the flow from natural language intent to kernel-level atomic enforcement:
 
-> [!TIP]
-> Click the image above to view the full video demonstration.
+```mermaid
+graph TD
+    User["User (Dashboard/API)"] -->|Natural Language| Parser["Hybrid Intent Parser"]
+    Parser -->|Regex/LLM| YAML["Structured YAML Policy"]
+    YAML -->|Validation| Enforcer["Policy Enforcer"]
+    
+    subgraph "Kernel Space (iptables)"
+        Enforcer -->|1. Create| TMP["INTENT_SEC_TMP (Chain)"]
+        TMP -->|2. Populate| Rules["Ruleset (Allow/Drop)"]
+        Rules -->|3. Atomic Swap| Live["INTENT_SEC (Live Chain)"]
+    end
+    
+    Drift["Drift Detector"] -->|Scan| Runtime["Docker Runtime"]
+    Runtime -.->|Report| Drift
+    Drift -->|Trigger| Enforcer
+```
+
+### Technical Workflow:
+1.  **Intent Parsing**: Natural language is mapped to port/protocol definitions.
+2.  **Shadow Building**: New rules are built in a temporary chain to avoid live disruption.
+3.  **Atomic Move**: The kernel swap ensures zero downtime.
+4.  **Continuous Monitoring**: The system audit loop (drift detection) ensures that any container without a policy is instantly flagged.
 
 ---
 
-## 🏗️ System Architecture
+## 🔍 Runtime Drift Detection & Audit Logs
+
+The system continuously audits the environment. Below is an example of the system detecting a "Rogue" container without a registered security intent:
+
+```json
+[2026-01-03 01:45:12] [WARN] DRIFT DETECTED: Container 'backdoor-shell' has no valid security policy!
+[2026-01-03 01:45:12] [INFO] ACTION: Isolating 'backdoor-shell' (IP: 172.17.0.5)
+[2026-01-03 01:45:13] [SUCCESS] RECONCILIATION: Traffic dropped for unauthorized workload.
 ```
-┌──────────────────────┐      ┌─────────────────────────────┐
-│  User / Developer    │      │  Security Orchestrator      │
-│  "Allow Database..." ├─────►│  (FastAPI Backend)          │
-└──────────────────────┘      └──────────────┬──────────────┘
-                                             │
-      ┌──────────────────────────────────────┼──────────────────────────────────┐
-      │                                      │                                  │
-┌─────▼─────────────────┐       ┌────────────▼──────────────┐       ┌───────────▼────────────┐
-│ Intent Parser         │       │ Drift Detector            │       │ Policy Enforcer        │
-│ (Regex / LLM Driver)  │       │ (Runtime Auditing)        │       │ (Atomic iptables)      │
-└───────────────────────┘       └───────────────────────────┘       └────────────────────────┘
-```
+
+---
+
+## 💼 Corporate Impact & Use Cases
+
+### 1. Compliance & Security Operations (SOC)
+- **NIST CSF 2.0 Alignment**: Automatically satisfies the **PROTECT** (PR.AC-04) and **DETECT** (DE.CM-01) categories.
+- **Audit Ready**: Every intent creates a versioned YAML file, providing a complete history of *who* allowed *what* and *why*.
+
+### 2. DevOps / GitOps Integration
+- Developers can describe their requirements in plain English within their PRs.
+- The system integrates into CI/CD pipelines to validate security postures before deployment.
+
+### 3. "Shadow IT" Prevention
+- In corporate environments, unmanaged containers are a major risk. Our **Detection Loop** ensures that any unauthorized workload is identified in under 1ms.
 
 ---
 
