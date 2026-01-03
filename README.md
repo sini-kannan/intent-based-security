@@ -51,7 +51,10 @@ This project is architected according to industry-standard security principles:
 ## 🎥 Video Demonstration: Zero-Downtime Atomic Swap
 Watch the system in action, maintaining 100% traffic continuity during a live security policy change.
 
-<video src="docs/zero-downtime.mp4" width="100%" controls></video>
+[![Zero-Downtime Demo - Click to Play](docs/demo-thumbnail.png)](docs/zero-downtime.mp4)
+
+> [!TIP]
+> Click the image above to view the full video demonstration (requires a viewer that supports MP4 playback).
 
 ---
 
