@@ -157,8 +157,15 @@ npm start
 
 ### Optional: Enable LLM Mode
 1.  Install [Ollama](https://ollama.com).
-2.  Run `ollama pull llama3`.
-3.  Uncomment `_parse_with_llm` in `intent_parser.py`.
+2.  Run `ollama pull llama3` or `ollama pull mistral`.
+3.  Uncomment `return self._parse_with_llm(text, container_name)` in `intent_parser.py`.
+> [!TIP]
+> If your hardware is limited, try using quantized models or a smaller model like `mistral` or `phi3`. The system now supports few-shot prompting for better accuracy.
+
+---
+
+## 📄 License
+This project is licensed under the MIT License - see the [LICENSE](file:///c:/Users/Sini%20T%20P/OneDrive/Desktop/SEM%20II/Projet/intent-based-security/LICENSE) file for details.
 
 ---
 

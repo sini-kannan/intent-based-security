@@ -27,7 +27,8 @@ test_cases = [
     It should be able to connect to PostgreSQL.
     Also, it needs to send emails.
     Allow DNS lookups.
-    """, "complex-app")
+    """, "complex-app"),
+    ("Multi-Requirement Single Sentence", "The container should access the database and email.", "multi-req-app")
 ]
 
 # Run all test cases

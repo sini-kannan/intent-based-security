@@ -143,7 +143,7 @@ class IntentParser:
              lambda m, i: self._add_domain_smart(m.group(1).lower(), i)),
              
             # Fallback for bare service names
-            (re.compile(r'\b(postgres|postgresql|mysql|mongodb|redis|http|https|ssh|telnet|dns|ftp|smtp|imap|pop3|api-gateway|gateway)\b', re.IGNORECASE),
+            (re.compile(r'\b(postgres|postgresql|mysql|mongodb|redis|http|https|ssh|telnet|dns|ftp|smtp|imap|pop3|api-gateway|gateway|email|mail|web|rdp|vnc|rabbitmq)\b', re.IGNORECASE),
              lambda m, i: self._add_service(m.group(1).lower(), i)),
         ]
 
@@ -162,49 +162,70 @@ class IntentParser:
         # If Ollama fails, it will fallback to Regex automatically.
         # return self._parse_with_llm(text, container_name)
 
-    def _parse_with_llm(self, text: str, container_name: str) -> Dict:
-        """Uses a local LLM (Ollama) to parse intents."""
-        print("[INFO] Parsing with local LLM...")
+    def _parse_with_llm(self, text: str, container_name: str, model: str = "llama3") -> Dict:
+        """Uses a local LLM (Ollama) to parse intents with few-shot prompting."""
+        print(f"[INFO] Parsing with local LLM ({model})...")
         
         prompt = f"""
         You are a network security expert. Extract technical requirements from the user's intent.
-        
-        User Intent: "{text}"
-        
-        Return ONLY a JSON object with this structure:
+        Return ONLY a JSON object.
+
         {{
             "services": ["service_name_1", "service_name_2"],
             "domains": ["domain1.com", "domain2.com"]
         }}
-        
-        Known services keys you can use: 
-        web, http, https, dns, ssh, telnet, ftp, smtp, imap, pop3, mysql, postgres, mongodb, redis.
-        
+
+        Known services keys: 
+        web, http, https, dns, ssh, telnet, ftp, smtp, imap, pop3, mysql, postgres, mongodb, redis, rabbitmq, rdp, vnc.
+
         If the user mentions a specific port (e.g. "port 8080"), add it as a service named "port-8080".
         If the intent is vague, assume reasonable defaults (e.g. "ping" -> "icmp" or "network").
+
+        Examples:
+        User Intent: "I need Telnet access to the legacy mainframe on 10.0.50.10"
+        JSON:
+        {{
+            "services": ["telnet"],
+            "domains": ["10.0.50.10"]
+        }}
+
+        User Intent: "frontend talks to api-gateway and redis cache in the local servers, backend connects to postgres and sends emails via SendGrid"
+        JSON:
+        {{
+            "services": ["api-gateway", "redis", "postgres", "email"],
+            "domains": ["servers.local", "sendgrid.com"]
+        }}
+
+        User Intent: "{text}"
+        JSON:
         """
         
         try:
             response = requests.post(
                 "http://localhost:11434/api/generate",
                 json={
-                    "model": "llama3",  # Or 'mistral', 'tinyllama'
+                    "model": model, 
                     "prompt": prompt,
                     "stream": False,
-                    "format": "json"
+                    "format": "json",
+                    "options": {
+                        "temperature": 0.1 # Keep it deterministic
+                    }
                 },
-                timeout=5 # Fail fast if not running
+                timeout=10 # Increased timeout for LLM inference
             )
             
             if response.status_code == 200:
                 result = response.json()
-                data = json.loads(result.get('response', '{}'))
+                raw_response = result.get('response', '{}')
+                data = json.loads(raw_response)
                 
                 # Convert LLM JSON to Policy Dict
                 intent = self._create_base_intent(container_name)
                 
                 # Apply Services
                 for svc in data.get('services', []):
+                    svc = svc.lower().strip()
                     # Handle raw ports "port-8080"
                     if svc.startswith("port-"):
                         try:
@@ -218,7 +239,11 @@ class IntentParser:
                 
                 # Apply Domains
                 for dom in data.get('domains', []):
-                    self._add_domain(dom, intent)
+                    self._add_domain(dom.lower().strip(), intent)
+                
+                # Ensure we have at least some rules if the LLM returned services but no ports were found
+                if not intent['spec']['egress'] and (data.get('services') or data.get('domains')):
+                    print("[WARN] LLM returned data but no egress rules were generated. Checking fallbacks.")
                 
                 self._enrich_security_risks(intent)
                 return intent
@@ -228,7 +253,7 @@ class IntentParser:
                 return self._parse_with_regex(text, container_name)
                 
         except Exception as e:
-            print(f"[WARN] LLM unavailable ({str(e)}), falling back to Regex.")
+            print(f"[WARN] LLM unavailable or error ({str(e)}), falling back to Regex.")
             return self._parse_with_regex(text, container_name)
 
     def _create_base_intent(self, container_name: str) -> Dict:
@@ -263,7 +288,8 @@ class IntentParser:
         
         # Split by sentence boundaries, commas, and conjunctions
         # Use a lookahead to ensure dots are only splitters if they end a sentence
-        sentences = re.split(r'(?:[.!?](?:\s+|$))|[;,]|\s+and\s+', text)
+        # Also handle "and" more broadly but avoid breaking domain names
+        sentences = re.split(r'(?:[.!?](?:\s+|$))|[;,]|\s+(?:and|also|plus|with)\s+', text)
         
         for line in sentences:
             line = line.strip()
