@@ -1,16 +1,15 @@
-import os, subprocess, re, json
+import os, subprocess, re, json, sys, tempfile
 from datetime import datetime
-
-import sys
 
 def get_latest_log_dir():
     # Check for existing logs
-    if os.path.exists("/tmp"):
-        dirs = [d for d in os.listdir("/tmp") if d.startswith("runtime_logs_")]
+    tmp_dir = tempfile.gettempdir()
+    if os.path.exists(tmp_dir):
+        dirs = [d for d in os.listdir(tmp_dir) if d.startswith("runtime_logs_")]
         if dirs:
-            dirs.sort(key=lambda x: os.path.getmtime(os.path.join("/tmp", x)), reverse=True)
+            dirs.sort(key=lambda x: os.path.getmtime(os.path.join(tmp_dir, x)), reverse=True)
             # If latest log is recent (< 1 min), use it. Otherwise capture new.
-            latest = os.path.join("/tmp", dirs[0])
+            latest = os.path.join(tmp_dir, dirs[0])
             if (datetime.now().timestamp() - os.path.getmtime(latest)) < 60:
                 print(f"Using recent logs: {latest}")
                 return latest
@@ -22,12 +21,13 @@ def get_latest_log_dir():
         # traffic_collector might need sudo in some envs, but we try as is
         result = subprocess.run(cmd, capture_output=True, text=True)
         # Extract log path from output
-        match = re.search(r"Logs stored in:\s*(/tmp/runtime_logs[^\s]+)", result.stdout)
+        # Handle both Windows and Linux paths
+        match = re.search(r"Logs stored in:\s*([^\s]+runtime_logs[^\s]+)", result.stdout)
         if match:
-            return match.group(1)
-        match = re.search(r"Logs directory:\s*(/tmp/runtime_logs[^\s]+)", result.stdout)
+            return match.group(1).strip()
+        match = re.search(r"Logs directory:\s*([^\s]+runtime_logs[^\s]+)", result.stdout)
         if match:
-            return match.group(1)
+            return match.group(1).strip()
             
         print("Capture failed or no logs output found.")
         print(result.stdout)
@@ -37,13 +37,16 @@ def get_latest_log_dir():
         return None
 
 def run_drift_detection(log_dir):
-    cmd = ["python3", "detect_drift_auto.py", "--logs", log_dir, "--intents", "."]
+    cmd = [sys.executable, "detect_drift_auto.py", "--logs", log_dir, "--intents", "."]
     result = subprocess.run(cmd, capture_output=True, text=True)
     print(result.stdout)
     return os.path.exists("drift_log.json")
 
 def run_reconciliation():
-    cmd = ["sudo", "python3", "policy_reconciler.py"]
+    # Remove sudo for Windows compatibility, check for Linux for sudo if needed
+    cmd = [sys.executable, "policy_reconciler.py"]
+    if sys.platform != "win32":
+        cmd = ["sudo"] + cmd
     result = subprocess.run(cmd, capture_output=True, text=True)
     print(result.stdout)
 

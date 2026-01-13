@@ -20,7 +20,20 @@ except ImportError:
     # Fallback if running from a different context
     pass
 
-app = FastAPI()
+app = FastAPI(
+    title="Intent-Based Security API",
+    description="""
+    ## 🛡️ Autonomous Control Plane for Container Security
+    This API handles the translation of high-level security intents into enforced kernel rules.
+    It supports:
+    * **Semantic Parsing** (Regex/LLM)
+    * **Atomic Enforcement** (Zero-Downtime Swaps)
+    * **Runtime Drift Detection** (Continuous Auditing)
+    """,
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc"
+)
 
 # Enable CORS
 app.add_middleware(
@@ -31,8 +44,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# --- MODELS ---
+
 class IntentRequest(BaseModel):
-    text: str
+    text: str = "Allow web-service to access database on port 5432"
     container_name: str = "default-container"
 
 class IntentResponse(BaseModel):
@@ -42,17 +57,50 @@ class IntentResponse(BaseModel):
     yaml_content: str
     created_at: str
 
+class PipelineResponse(BaseModel):
+    status: str
+    output: str
+    details: Optional[str] = None
+
+class DriftEntry(BaseModel):
+    container: str
+    time: str
+    reason: str
+    severity: str
+
+class DriftResponse(BaseModel):
+    drift: List[DriftEntry] = []
+    message: Optional[str] = None
+
+class PortWatchResponse(BaseModel):
+    bad_ports: List[int] = []
+    safe_ports: List[int] = []
+
+class PolicyFile(BaseModel):
+    filename: str
+    content: Any
+
+class ContainerInfo(BaseModel):
+    name: str
+    status: str
+    image: str
+
 # In-memory storage for intents (mock db)
 intents_db = []
 
-@app.get("/")
+@app.get("/", tags=["General"])
 async def root():
+    """Welcome endpoint for the Security API."""
     return {"message": "Intent-Based Security API", "status": "running"}
 
 # --- INTENT MANAGEMENT ---
 
-@app.post("/api/intents/", response_model=IntentResponse)
+@app.post("/api/intents/", response_model=IntentResponse, tags=["Intent Core"])
 async def create_intent(intent: IntentRequest):
+    """
+    ### 🧠 Semantic Translation
+    Takes a natural language string and converts it into a structured YAML Security Policy.
+    """
     try:
         print(f"\nPOLICY CREATION REQUEST")
         print(f"{'='*31}")
@@ -90,15 +138,19 @@ async def create_intent(intent: IntentRequest):
         print(f"✗ Error creating policy: {str(e)}\n")
         raise HTTPException(status_code=400, detail=str(e))
 
-@app.get("/api/intents/", response_model=List[dict])
+@app.get("/api/intents/", response_model=List[IntentResponse], tags=["Intent Core"])
 async def list_intents():
+    """Lists all previously interpreted intents stored in the session."""
     return intents_db
 
 # --- PIPELINE CONTROLS ---
 
-@app.post("/api/run_pipeline")
+@app.post("/api/run_pipeline", response_model=PipelineResponse, tags=["Enforcement"])
 async def run_pipeline():
-    """Trigger the auto_reconcile execution."""
+    """
+    ### 🚀 Atomic Enforcement Pipeline
+    Triggers the reconciliation script to perform the atomic swap in the Linux kernel.
+    """
     try:
         script_path = PARENT_DIR / "auto_reconcile.py"
         # Run the script using the same interpreter as the server
@@ -116,37 +168,46 @@ async def run_pipeline():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/drift")
+@app.get("/api/drift", response_model=DriftResponse, tags=["Monitoring"])
 async def get_drift_logs():
-    """Get the latest drift log."""
+    """
+    ### 🔍 Drift Detection
+    Retrieves the latest audit logs identifying 'Shadow IT' or unauthorized container behaviors.
+    """
     log_path = PARENT_DIR / "drift_log.json"
     if not log_path.exists():
-        return {"drift": [], "message": "No drift log found"}
+        return DriftResponse(drift=[], message="No drift log found")
     
     try:
         with open(log_path, "r") as f:
             data = json.load(f)
         return data
     except Exception as e:
-        return {"error": str(e)}
+        return DriftResponse(drift=[], message=f"Error: {str(e)}")
 
-@app.get("/api/ports")
+@app.get("/api/ports", response_model=PortWatchResponse, tags=["Intelligence"])
 async def get_port_watch():
-    """Get the malicious port database."""
+    """
+    ### 🕵️ Malicious Port Intelligence
+    Returns the database of ports under watch for malicious activities.
+    """
     path = PARENT_DIR / "port_watch.yaml"
     if not path.exists():
-        return {"bad_ports": [], "safe_ports": []}
+        return PortWatchResponse(bad_ports=[], safe_ports=[])
     
     try:
         with open(path, "r") as f:
             data = yaml.safe_load(f)
         return data or {}
     except Exception as e:
-        return {"error": str(e)}
+        return PortWatchResponse(bad_ports=[], safe_ports=[])
 
-@app.get("/api/policies")
+@app.get("/api/policies", response_model=List[PolicyFile], tags=["Governance"])
 async def list_policies():
-    """List generated policies."""
+    """
+    ### 📜 Policy Inventory
+    Lists all generated Security Policies (YAML) currently stored in the system.
+    """
     policies_dir = PARENT_DIR / "policies"
     if not policies_dir.exists():
         return []
@@ -165,9 +226,12 @@ async def list_policies():
                 pass
     return policies
 
-@app.get("/api/containers")
+@app.get("/api/containers", response_model=List[ContainerInfo], tags=["Monitoring"])
 async def list_containers():
-    """List active containers using docker ps."""
+    """
+    ### 🐳 Docker Runtime Status
+    Monitors the active containers on the host system to cross-reference with security policies.
+    """
     try:
         # Simple docker ps to get names
         cmd = ["docker", "ps", "--format", "{{.Names}}|{{.Status}}|{{.Image}}"]

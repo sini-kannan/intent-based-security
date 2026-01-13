@@ -11,7 +11,7 @@ def load_watch():
 watch = load_watch()
 auto_bad = set(watch.get("bad_ports", []))
 
-cmd = ["python3", "detect_drift_batch_pretty.py"] + sys.argv[1:]
+cmd = [sys.executable, "detect_drift_batch_pretty.py"] + sys.argv[1:]
 result = subprocess.run(cmd, capture_output=True, text=True)
 out = result.stdout
 print(out)

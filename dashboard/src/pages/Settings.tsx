@@ -329,7 +329,7 @@ const Settings = () => {
           <Button
             variant="contained"
             color="primary"
-            href="/api-docs"
+            href="http://localhost:8000/docs"
             target="_blank"
             sx={{ textTransform: 'none', borderRadius: '20px' }}
           >

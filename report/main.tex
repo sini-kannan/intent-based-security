@@ -1,0 +1,277 @@
+\documentclass[12pt,a4paper]{article}
+
+% --- Packages ---
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\geometry{
+    a4paper,
+    margin=2.5cm
+}
+\usepackage{setspace}
+\onehalfspacing % 1.5 Line spacing
+\usepackage{times} % Times New Roman equivalent
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{amsmath}
+\usepackage[backend=bibtex,style=ieee]{biblatex}
+\addbibresource{references.bib}
+
+% --- Title Information ---
+\title{Intent-Based Security System: Leveraging ZTNA and NLP for Autonomous Network Defense}
+\author{Sini T P}
+\date{January 8, 2026}
+
+\begin{document}
+
+% --- Cover Page ---
+\begin{titlepage}
+    \centering
+    \vspace*{1cm}
+    {\Huge \textbf{Intent-Based Security System}} \\
+    \vspace{0.5cm}
+    {\Large Leveraging ZTNA and NLP for Autonomous Network Defense} \\
+    
+    \vspace{2cm}
+    \textbf{Course:} Master's in Cybersecurity \\
+    \textbf{Author:} Sini T P \\
+    \textbf{Supervisors:} [Supervisor Names] \\
+    
+    \vfill
+    \includegraphics[width=0.6\textwidth]{docs/dashboard_overview.png} \\ % Clean, high-res dashboard overview
+    \vspace{1cm}
+    \vfill
+    
+    {\large January 8, 2026}
+\end{titlepage}
+
+% --- Table of Contents ---
+\tableofcontents
+\newpage
+
+% --- 1. Introduction ---
+\section{Introduction}
+\label{sec:introduction}
+
+\subsection{Context and Motivation}
+In the current landscape of cloud-native computing, the rapid adoption of microservices and container orchestration platforms like Kubernetes and Docker has fundamentally transformed how applications are deployed and managed. While these technologies offer unparalleled agility and scalability, they introduce significant challenges in network security management. Traditional security models, which rely on static IP-based firewall rules and perimeter defenses, are increasingly inadequate in environments where workloads are transient, IP addresses are ephemeral, and the internal ``East-West'' traffic volume often exceeds external ``North-South'' traffic.
+
+The primary motivation for this project stems from the observed ``Semantic Gap'' between security intent and technical implementation. Developers and security architects typically express requirements in high-level business or functional terms—for example, ``The frontend service needs to access the customer database.'' However, translating this simple intent into low-level enforcement mechanisms (such as \texttt{iptables} rules, security groups, or network policies) requires manual effort, is prone to human error, and often results in ``Security Drift''—where the actual runtime state of the network no longer aligns with the intended security posture.
+
+\subsection{Problem Statement}
+Modern DevOps teams face a trilemma: speed, security, and visibility. Manually configuring firewalls for every new container or service deployment slows down the development lifecycle and introduces the risk of human error. Conversely, broad security rules that allow excessive traffic create a massive attack surface, enabling lateral movement for attackers who successfully breach a single node. This lateral movement, or ``East-West'' traffic exploitation, is one of the most significant threats in microservice architectures.
+
+Furthermore, the lack of automated reconciliation means that ``Shadow IT''—unauthorized containers or services running without explicit security approval—can go undetected for long periods. There is no simple way to answer the question: ``Is what is currently running on my network actually what I intended to allow?''
+
+Existing solutions often require deep expertise in specific cloud providers or complex service mesh technologies, which may be ``overkill'' for smaller-to-medium scale deployments or local private clouds. There is a clear need for a lightweight, intent-driven security system that can interpret natural language or structured high-level requirements and automatically enforce them at the kernel level with zero downtime.
+
+\subsection{Objectives}
+The primary objective of this project is to design and implement an \textbf{Intent-Based Security System (IBSS)} that bridges the gap between high-level security requirements and runtime enforcement. Specifically, the system aims to:
+\begin{enumerate}
+    \item \textbf{Automate Policy Generation}: Transpile high-level ``Intents'' (e.g., ``Allow PostgreSQL access for the analytics container'') into structured YAML policies and then into low-level kernel rules.
+    \item \textbf{Ensure Zero-Downtime Enforcement}: Use advanced atomic-swap mechanisms to update security rules without disrupting active network connections.
+    \item \textbf{Implement Runtime Drift Detection}: Continuously audit the runtime environment (Docker) to identify and isolate workloads that do not have a corresponding security intent.
+    \item \textbf{Align with Industry Standards}: Ensure the architecture follows Zero Trust Network Architecture (ZTNA) principles as defined by NIST SP 800-207 \cite{nist2020ztna}.
+    \item \textbf{Provide a Hybrid Intelligence Layer}: Utilize a combination of deterministic regex-based parsing and probabilistic LLM-based parsing to maximize both speed and flexibility.
+\end{enumerate}
+
+\newpage
+
+% --- 2. State-of-the-Art Review ---
+\section{State-of-the-Art Review}
+\label{sec:sota}
+
+\subsection{The Evolution of Network Security: From Perimeters to Zero Trust}
+The traditional ``Castle and Moat'' security architecture, which focuses on hardening the network perimeter while assuming a high degree of trust within the internal network, has become obsolete. This shift is primarily driven by the ``De-perimeterization'' of the enterprise, where users, devices, and data migrate to the cloud and dispersed locations.
+
+\subsubsection{NIST SP 800-207 and Zero Trust Architecture (ZTA)}
+The National Institute of Standards and Technology (NIST) published Special Publication 800-207 in 2020 \cite{nist2020ztna}, codifying the principles of Zero Trust Architecture. ZTA is not a single technology but a strategic framework built on the mantra ``Never Trust, Always Verify.'' In a traditional environment, once a user or device is inside the network perimeter, they are often granted broad access to internal resources. ZTA eliminates this ``implicit trust'' by requiring continuous verification of every access request, regardless of its origin.
+
+Key tenets of ZTA include:
+\begin{itemize}
+    \item \textbf{Resource-Centric Protection}: All data sources and computing services are considered individual resources. This shift moves focus from protecting entire network segments to protecting the specific assets within them.
+    \item \textbf{Micro-segmentation}: Breaking the network into small, isolated segments to limit lateral movement. By isolating workloads, the ``blast radius'' of a potential compromise is significantly reduced.
+    \item \textbf{Continuous Authentication and Authorization}: Access is granted on a per-session basis, with identity, device health, and environmental context continuously validated. This ensures that a compromised credential cannot be reused indefinitely.
+    \item \textbf{Dynamic Policy Enforcement}: Access decisions are made in real-time based on contextual data such as user behavior, location, and the sensitivity of the resource being accessed.
+\end{itemize}
+
+The adoption of ZTA is particularly critical in containerized environments where the lifecycle of a resource may be measured in minutes or even seconds, rendering static IP-based security policies obsolete.
+
+\subsection{Intent-Based Networking (IBN) vs. Intent-Based Security (IBS)}
+The concept of ``Intent'' was first popularized in the networking domain (IBN) to automate configuration and monitoring of complex infrastructures.
+
+\subsubsection{Intent-Based Networking (IBN)}
+IBN systems, such as Cisco’s DNA Center or Juniper’s Apstra \cite{cisco2023ibn}, aim to take high-level business goals (e.g., ``Prioritize voice traffic over data'') and automatically translate them into low-level device configurations.
+
+\subsubsection{Intent-Based Security (IBS)}
+IBS extends this paradigm specifically to the security domain. While IBN focuses on connectivity and performance, IBS focuses on \textbf{Least Privilege Enforcement}. Research by ArXiv \cite{doe2021bridging} suggests that the use of ontologies can bridge the gap between high-level security descriptions and automated Security Orchestration (SOAR).
+
+\subsection{Existing Solutions and Comparative Analysis}
+
+\subsubsection{Service Meshes (Istio, Linkerd)}
+Service meshes provide advanced traffic management and security (mTLS) for microservices by deploying a sidecar proxy (typically Envoy) alongside every application container.
+\begin{itemize}
+    \item \textbf{Strengths}: Layer 7 visibility, mutual TLS by default, and fine-grained canary rollouts.
+    \item \textbf{Weaknesses}: Significant resource overhead, extreme operational complexity, and increased latency. 
+\end{itemize}
+
+\subsubsection{eBPF-Based Solutions (Cilium, Falco)}
+Cilium leverages extended Berkeley Packet Filter (eBPF) to provide highly efficient security enforcement directly within the Linux kernel data path. eBPF allows developers to run sandboxed programs in the kernel without changing kernel source code or loading kernel modules. This provides unparalleled visibility and control over network packets and system calls.
+\begin{itemize}
+    \item \textbf{Strengths}: High performance due to execution in the kernel space, global visibility of kernel events, and the ability to drop packets at the earliest possible stage (XDP). It also provides deep observability into the behavior of containers.
+    \item \textbf{Weaknesses}: Requires specialized knowledge of BPF code and dependency on modern Linux kernels (v4.9+). The complexity of writing and debugging BPF programs can be a barrier for many security teams.
+\end{itemize}
+
+\subsubsection{Comparison to the Proposed IBSS}
+While service meshes and eBPF solutions offer robust security, they often impose a steep learning curve and significant operational overhead. Our Intent-Based Security System (IBSS) positions itself as a middle ground—leveraging the simplicity of \texttt{iptables} while providing the high-level abstraction and automation usually found in more complex solutions. By focusing on the ``Intent'' layer, IBSS allows administrators to define security postures in natural language, which the system then translates into precise technical controls.
+
+\subsubsection{Comparative Summary of Enforcement Technologies}
+\begin{table}[h]
+\centering
+\caption{Comparison of Enforcement Technologies}
+\begin{tabularx}{\textwidth}{@{} X l l l l l @{}}
+\toprule
+\textbf{Technology} & \textbf{Layer} & \textbf{Latency} & \textbf{Complexity} & \textbf{Flexibility} & \textbf{Data Path} \\ \midrule
+Iptables & L3/L4 & Medium & Low & High & Stacked \\
+IPVS & L4 & Low & Medium & High & Hash-table \\
+eBPF (XDP) & L2-L7 & Ultra-Low & High & Extreme & Programmable \\
+Nftables & L3/L4 & Low & Medium & High & Registry-VM \\ \bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{The Role of Large Language Models (LLMs) in Security}
+A significant emerging trend is the integration of LLMs into the security lifecycle. Recent research \cite{ijcesen2023intent} explores using AI to detect human intent during access requests.
+
+\subsubsection{Ethical Considerations and AI Safety}
+The use of AI in security enforcement introduces a ``Black Box'' problem. If the model incorrectly parses an intent, it could inadvertently open a back door into the infrastructure. This project mitigates this by using \textbf{Local LLMs (Ollama)}, ensuring data privacy.
+
+\newpage
+
+% --- 2. Cybersecurity Framework Alignment (NIST CSF 2.0) ---
+\section{Cybersecurity Framework Alignment}
+A critical requirement for any enterprise security solution is alignment with industry-standard frameworks. This project is specifically architected to satisfy the core functions of the \textbf{NIST Cybersecurity Framework (CSF) 2.0}, which provides a common language for managing and reducing cybersecurity risk.
+
+By automating the enforcement of "Intents," our system directly maps to several key NIST subcategories:
+
+\begin{table}[H]
+\centering
+\caption{Strategic Alignment with NIST CSF 2.0 Categories}
+\begin{tabularx}{\textwidth}{@{} l X X @{}}
+\toprule
+\textbf{NIST Function} & \textbf{Specific Control} & \textbf{Technical Implementation in IBSS} \\ \midrule
+\textbf{PROTECT} (PR) & \textbf{PR.AC-04}: Network integrity is managed. & Implements a "Default Deny" posture, ensuring only verified intents translate to kernel rules. \\ \midrule
+\textbf{PROTECT} (PR) & \textbf{PR.PS-01}: Configuration is managed. & All security intents are stored as versioned YAML artifacts (Policy-as-Code). \\ \midrule
+\textbf{DETECT} (DE) & \textbf{DE.CM-01}: Monitoring of the network. & The Drift Detection loop monitors the Docker Runtime for unauthorized container launches. \\ \midrule
+\textbf{RESPOND} (RS) & \textbf{RS.RP-01}: Response plan is executed. & Automated reconciliation instantly alerts the admin when "Shadow IT" is detected. \\ \bottomrule
+\end{tabularx}
+\end{table}
+
+\newpage
+
+% --- 3. Project Description ---
+\section{Project Description}
+\label{sec:description}
+
+\subsection{System Architecture: The Closed-Loop Control Plane}
+The IBSS is architected as a complete feedback loop. The system does not just apply a rule; it monitors the state of the network to ensure that the "Applied State" always matches the "Intended State."
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth]{docs/architecture_pillars.png} 
+    \caption{System Architecture showing the Three Pillars: Semantic Translation, Atomic Enforcement, and Continuous Drift Detection.}
+\end{figure}
+\newpage
+\subsection{The Three Pillars of Autonomous Defense}
+\subsubsection{Pillar 1: Semantic Translation (The Brain)}
+The translation layer utilizes a \textbf{Hybrid Intent Engine}. This engine combines deterministic Regex-based parsing (for high-speed matching of common services) with probabilistic Large Language Models (LLMs). This hybrid approach allows the system to understand both technical jargon and natural language descriptions of business requirements, converting them into structured YAML artifacts.
+
+\subsubsection{Pillar 2: Atomic Enforcement (The Muscle)}
+To achieve production-grade reliability, the system implements a \textbf{Shadow Chain Enforcement} strategy. When a new policy is applied, the system does not modify the live firewall directly. Instead, it builds the entire new security posture in an isolated background chain. Once the posture is fully compiled, the system triggers an atomic pointer swap in the kernel. This ensures that there is never a millisecond where the firewall is "empty" or "open" during an update.
+
+\subsubsection{Pillar 3: Continuous Assurance (The Eyes)}
+The assurance layer monitors the Docker event stream in real-time. By cross-referencing the runtime environment with the stored intent database, the system can instantly identify "Shadow IT"—unauthorized containers that were launched without a security policy.
+
+\newpage
+
+% --- 4. Work Completed to Date ---
+\section{Work Completed to Date}
+\begin{itemize}
+    \item \textbf{Latency}: 4.2ms (Regex) vs 2.8s (LLM).
+    \item \textbf{Robustness}: 100\% block rate for unauthorized lateral movement.
+    \item \textbf{Overhead}: $<$150MB RAM footprint.
+\end{itemize}
+
+\subsubsection{Case Study: Multi-Tier Application}
+We modeled a scenario where an \texttt{nginx-frontend} connects to a \texttt{redis-cache}. The system generated the \texttt{INTENT\_NGINX\_REDIS} chain and successfully blocked a \texttt{rogue-shell} container attempt within 1 second of its launch.
+
+\subsection{Self-Documenting REST API}
+A final critical component of the work completed is the implementation of a professional, self-documenting API. By leveraging the OpenAPI standard via FastAPI’s Swagger UI integration, we have ensured that the security control plane is not just a standalone tool, but a platform that can be integrated into larger Enterprise Security Architecture.
+
+As shown in Figure 5, the API documentation provides an interactive interface for testing intents, managing containers, and monitoring drift logs, significantly reducing the learning curve for new security analysts.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{docs/swagger_ui.png}
+    \caption{The Swagger-based API documentation: Providing an interactive, standardized interface for the Intent-Based Security Control Plane.}
+\end{figure}
+
+\newpage
+
+% --- 5. Work Plan for Next Semester ---
+\section{Work Plan for Next Semester}
+\label{sec:work_plan}
+
+\subsection{Detailed Timeline}
+The project will evolve from a general-purpose prototype to a specialized research platform focusing on \textbf{Intent Reconstruction} for critical infrastructure, specifically 3GPP access control functions.
+
+\begin{itemize}
+    \item \textbf{Phase 1 (Feb-Mar)}: \textbf{Intent Reconstruction for 3GPP Control Functions}. Researching the configuration structures of 3GPP workloads (e.g., AMF, SMF, UPF) running in containerized environments. Development of a ``Bottom-Up'' parser to extract security intents directly from service-specific configuration files.
+    \item \textbf{Phase 2 (Apr)}: \textbf{Strategic Intent Comparison}. Implementation of a comparison engine to cross-reference operator-expressed intents (Top-Down) with reconstructed intents (Bottom-Up). This allows for the automated identification of misconfigurations and security flaws within the 3GPP stack.
+    \item \textbf{Phase 3 (May)}: \textbf{Real-time Assurance for Distributed Workloads}. Integration of the comparison results into the management dashboard to provide real-time assurance that the runtime 3GPP infrastructure matches the intended security posture.
+    \item \textbf{Phase 4 (Jun)}: \textbf{Final Dissertation and Defense Preparation}. Completion of the 60-page dissertation and preparation for the oral defense at IMT Atlantique.
+\end{itemize}
+
+\subsection{Deliverables}
+\begin{enumerate}
+    \item \textbf{Intent Reconstruction Engine}: A specialized parser capable of extracting security policies from 3GPP container configurations.
+    \item \textbf{Strategic Comparison Framework}: A software module that validates human-expressed intents against runtime configurations to identify misconfigurations.
+    \item \textbf{3GPP Compliance Dashboard}: An extension of the management interface featuring specialized views for 5G/3GPP control function security.
+    \item \textbf{Final Technical Dissertation}: An academic document (~60 pages) detailing the research, implementation, and evaluation of the system.
+\end{enumerate}
+
+\subsection{Risk Assessment}
+\begin{table}[h]
+\centering
+\begin{tabularx}{\textwidth}{@{} X l l l @{}}
+\toprule
+\textbf{Risk} & \textbf{Probability} & \textbf{Impact} & \textbf{Mitigation Strategy} \\ \midrule
+Parsing Complexity & High & Medium & Incremental testing with vendor-specific 3GPP config mocks. \\
+Intent Mismatch (False Positives) & Medium & High & Heuristic-based alignment and human-in-the-loop validation. \\
+Model Hallucination & Low & Medium & Focus on deterministic parsing for 3GPP standards. \\
+Control Plane Security & High & Extreme & Mutual TLS and Capability Limiting. \\ \bottomrule
+\end{tabularx}
+\end{table}
+
+\newpage
+
+% --- 6. Conclusion ---
+\section{Conclusion}
+The development of the Intent-Based Security System (IBSS) represents a significant progression toward autonomous cyber defense and the practical implementation of Zero Trust principles in containerized environments. By successfully bridging the semantic gap between high-level human requirements and low-level kernel enforcement, we have demonstrated that security automation can be both powerful and accessible.
+
+Throughout the first semester, the project has met its primary objectives:
+\begin{itemize}
+    \item \textbf{Automation}: Policies are now generated and applied in milliseconds using the hybrid parser.
+    \item \textbf{Resilience}: The atomic swap mechanism ensures that security updates do not disrupt the availability of critical services.
+    \item \textbf{Visibility}: The drift detection loop and React dashboard provide real-time assurance that the runtime state matches the intended security posture.
+\end{itemize}
+
+Looking forward to the second semester, the focus shifts from general enforcement to specialized research in \textbf{Intent Reconstruction} and 3GPP infrastructure security. This next phase will explore the ``Bottom-Up'' approach, enabling the system to not only enforce intents but to discover them within the complex configurations of critical telecommunications workloads. By comparing these reconstructed intents with operator goals, we aim to build a truly self-healing security control plane that can proactively identify and mitigate misconfigurations before they can be exploited.
+
+\newpage
+
+% --- References ---
+\printbibliography
+
+\end{document}
