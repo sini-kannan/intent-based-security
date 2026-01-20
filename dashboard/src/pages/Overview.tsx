@@ -150,7 +150,8 @@ const Overview = () => {
 
       setContainers(uiContainers);
 
-      const dCount = (Array.isArray(drifts) ? drifts : []).length;
+      const driftArray = Array.isArray(drifts) ? drifts : (drifts && drifts.drift ? drifts.drift : []);
+      const dCount = driftArray.length;
 
       // Calculate penalties
       let penalty = 0;
@@ -171,13 +172,11 @@ const Overview = () => {
       penalty += (dangerousCount * 20);
 
       // 3. Unauthorized Container Penalty (Check drift logs for "Undeclared: ALL")
-      if (Array.isArray(drifts)) {
-        drifts.forEach((d: any) => {
-          if (d.undeclared_ports && d.undeclared_ports.includes('ALL')) {
-            penalty += 40; // Extra penalty for rogue containers
-          }
-        });
-      }
+      driftArray.forEach((d: any) => {
+        if (d.reason && (d.reason.includes('ALL') || d.severity === 'High')) {
+          penalty += 20; // Extra penalty for high severity or rogue containers
+        }
+      });
 
       setScore(Math.max(0, 100 - penalty));
       setDriftCount(dCount);

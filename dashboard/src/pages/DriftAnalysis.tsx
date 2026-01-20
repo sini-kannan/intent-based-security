@@ -49,17 +49,19 @@ const DriftAnalysis = () => {
     const fetchDrift = async () => {
       try {
         const data = await getDriftLogs();
-        const formatted = Array.isArray(data) ? data.map((d: any, idx: number) => {
+        const driftArray = Array.isArray(data) ? data : (data && data.drift ? data.drift : []);
+
+        const formatted = driftArray.map((d: any, idx: number) => {
           const ports = (d.bad_ports || []).filter((p: number) => p > 0);
           return {
             id: idx,
             container: d.container || 'unknown',
             timestamp: d.time || new Date().toISOString(),
-            type: 'Undeclared Port',
-            details: ports.length > 0 ? `Ports: ${ports.join(', ')}` : 'No drift detected',
-            status: ports.length > 3 ? 'high' : ports.length > 0 ? 'medium' : 'low',
+            type: d.reason ? 'Security Drift' : 'Undeclared Port',
+            details: d.reason || (ports.length > 0 ? `Ports: ${ports.join(', ')}` : 'Unauthorized traffic detected'),
+            status: d.severity?.toLowerCase() || (ports.length > 3 ? 'high' : ports.length > 0 ? 'medium' : 'low'),
           };
-        }) : [];
+        });
         setDriftData(formatted);
       } catch (e) {
         console.error('Failed to fetch drift:', e);

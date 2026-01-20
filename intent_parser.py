@@ -142,10 +142,21 @@ class IntentParser:
             (re.compile(r'(?:via|through|on|at)\s+([a-zA-Z0-9.-]+)', re.IGNORECASE),
              lambda m, i: self._add_domain_smart(m.group(1).lower(), i)),
              
+            # Isolation specific patterns
+            (re.compile(r'(?:isolate|lock down|restrict)\s+(?:the\s+)?([a-zA-Z0-9-]+)', re.IGNORECASE),
+             lambda m, i: self._handle_isolation(m.group(1).lower(), i)),
+             
             # Fallback for bare service names
             (re.compile(r'\b(postgres|postgresql|mysql|mongodb|redis|http|https|ssh|telnet|dns|ftp|smtp|imap|pop3|api-gateway|gateway|email|mail|web|rdp|vnc|rabbitmq)\b', re.IGNORECASE),
              lambda m, i: self._add_service(m.group(1).lower(), i)),
         ]
+
+    def _handle_isolation(self, name: str, intent: Dict) -> None:
+        """Adds isolation metadata and minimal essential rules."""
+        intent['metadata']['annotations']['isolation_mode'] = "Enabled"
+        intent['metadata']['annotations']['policy_type'] = "Zero-Trust-Isolation"
+        # Isolation implies default-deny, but we usually need DNS for basic health checks
+        self._add_service('dns', intent)
 
     def parse(self, text: str, container_name: str = "my-container") -> Dict:
         """
@@ -317,7 +328,11 @@ class IntentParser:
     def _parse_service_access(self, service: str, intent: Dict) -> None:
         """Resolves service names/aliases to port rules."""
         if service in self.SERVICE_ALIASES:
-            for actual_service in self.SERVICE_ALIASES[service]:
+            # Add ambiguity warning when expanding aliases
+            expanded_services = self.SERVICE_ALIASES[service]
+            if len(expanded_services) > 1:
+                intent['metadata']['annotations']['ambiguity_warning'] = f"'{service}' expanded to multiple services: {', '.join(expanded_services)}"
+            for actual_service in expanded_services:
                 self._add_service(actual_service, intent)
         elif service in self.SERVICE_PORTS:
             self._add_service(service, intent)

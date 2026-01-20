@@ -101,9 +101,10 @@ def main():
     chain_name = "INTENT_SEC"
     temp_chain = "INTENT_SEC_TMP"
     
-    print("\n[INFO] Starting Security Policy Enforcement Pipeline")
-    print("--------------------------------------------------")
-    print(f"[INFO] Initializing temporary shadow chain: {temp_chain}")
+    print("\n" + "="*60)
+    print(" [IBSS] SECURITY POLICY ENFORCEMENT PIPELINE")
+    print("="*60)
+    print(f"[*] Initializing Shadow Chain: {temp_chain}")
     
     # Create new chain or flush if exists
     run(["sudo", "iptables", "-N", temp_chain])
@@ -121,7 +122,7 @@ def main():
         if not ip: continue
             
         allowed = read_ports(policy_path)
-        print(f"[INFO] Compiling rules for {name} ({ip}) -> {temp_chain}")
+        print(f"[*] Mapping {name} ({ip}) -> {temp_chain}")
         
         # Allow declared ports
         for port, proto in allowed:
@@ -137,8 +138,7 @@ def main():
         run(["sudo", "iptables", "-A", temp_chain, "-s", ip, "-m", "conntrack", "--ctstate", "NEW", "-j", "DROP"])
 
     # 3. The Atomic Swap
-    print("[INFO] Finalizing policy compilation...")
-    print("[INFO] Atomic Swap Initiated: Diverting traffic to shadow chain...")
+    print("[*] Atomic Swap Initiated: Diverting traffic to Shadow Chain...")
     
     # Ensure the main INTENT_SEC chain exists
     run(["sudo", "iptables", "-N", chain_name])
@@ -156,11 +156,11 @@ def main():
     # Rename TMP -> INTENT_SEC
     run(["sudo", "iptables", "-E", temp_chain, chain_name])
     
-    print("\n--------------------------------------------------")
-    print("✓ Atomic swap complete. Zero downtime achieved.")
-    print("✓ All policies enforced successfully.")
-    print("--------------------------------------------------\n")
-    print(f"Enforcement Cycle Finished at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("="*60)
+    print(" [SUCCESS] Atomic swap complete. Zero downtime achieved.")
+    print(" [SUCCESS] All policies enforced successfully.")
+    print("="*60)
+    print(f"Cycle Finished at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 if __name__ == "__main__":
     main()

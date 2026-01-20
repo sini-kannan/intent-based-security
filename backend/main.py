@@ -181,9 +181,13 @@ async def get_drift_logs():
     try:
         with open(log_path, "r") as f:
             data = json.load(f)
+        
+        # Normalize: if it's a list, wrap it in the expected dict format
+        if isinstance(data, list):
+            return {"drift": data, "message": "Logs retrieved successfully"}
         return data
     except Exception as e:
-        return DriftResponse(drift=[], message=f"Error: {str(e)}")
+        return {"drift": [], "message": f"Error loading logs: {str(e)}"}
 
 @app.get("/api/ports", response_model=PortWatchResponse, tags=["Intelligence"])
 async def get_port_watch():
